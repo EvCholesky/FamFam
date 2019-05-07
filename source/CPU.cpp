@@ -66,8 +66,6 @@ IMapper * PMapperFromMapperk(MAPPERK mapperk)
 
 void DumpAsm(Famicom * pFam, u16 addrMin, int cB)
 {
-	//u8 * pBPrgEnd = pBPrg + cB;
-	//while (pBPrg < pBPrgEnd)
 	u32 addrMax = addrMin + cB;
 	u32 addr = addrMin;
 	while (addr < addrMax)
@@ -84,35 +82,35 @@ void DumpAsm(Famicom * pFam, u16 addrMin, int cB)
 		}
 		switch (pAmodinfo->m_cB)
 		{
-		case 1: printf("$%04X: %02X        ", addr, aB[0]); break;
-		case 2: printf("$%04X: %02X %02X     ", addr, aB[0], aB[1]); break;
-		case 3: printf("$%04X: %02X %02X %02X  ", addr, aB[0], aB[1], aB[2]); break;
-		default: FF_ASSERT(false, "unexpected opcode size");
+			case 1: printf("$%04X: %02X        ", addr, aB[0]); break;
+			case 2: printf("$%04X: %02X %02X     ", addr, aB[0], aB[1]); break;
+			case 3: printf("$%04X: %02X %02X %02X  ", addr, aB[0], aB[1], aB[2]); break;
+			default: FF_ASSERT(false, "unexpected opcode size");
 		}
 
 		printf("%s%s ", (pOpkinfo->m_fIsLegal) ? "  " : "!!", pOpinfo->m_pChzMnemonic);
 
 		switch(pAmodinfo->m_amod)
 		{
-		case AMOD_Implicit:			break;
-		case AMOD_Immediate: printf("#$%02X ", aB[1]);				break;
-		case AMOD_Relative:
-			{
-				u16 addrRel = addr + pAmodinfo->m_cB + s8(aB[1]);
-				printf("$%04X ", addrRel);
-			}break;
-		case AMOD_Accumulator:		break;
-		case AMOD_Absolute: printf("$%02X%02X ", aB[2], aB[1]);		break;
-		case AMOD_AbsoluteX: printf("$%02X%02X,X ", aB[2], aB[1]);	break;
-		case AMOD_AbsoluteY: printf("$%02X%02X,Y ", aB[2], aB[1]);	break;
-		case AMOD_ZeroPage: printf("$00%02X ", aB[1]);				break;
-		case AMOD_ZeroPageX: printf("$%02X,X ", aB[1]);				break;
-		case AMOD_ZeroPageY: printf("$%02X,Y ", aB[1]);				break;
-		case AMOD_Indirect: printf("($%02X%02X) ", aB[2], aB[1]);	break;
-		case AMOD_IndirectX: printf("($%02X,X) ", aB[1]);			break;
-		case AMOD_IndirectY: printf("($%02X),Y ", aB[1]);			break;
-		default:
-			FF_ASSERT(false, "unhandled addressing mode.");
+			case AMOD_Implicit:											break;
+			case AMOD_Immediate: printf("#$%02X ", aB[1]);				break;
+			case AMOD_Relative:
+				{
+					u16 addrRel = addr + pAmodinfo->m_cB + s8(aB[1]);
+					printf("$%04X ", addrRel);
+				}break;
+			case AMOD_Accumulator:		break;
+			case AMOD_Absolute: printf("$%02X%02X ", aB[2], aB[1]);		break;
+			case AMOD_AbsoluteX: printf("$%02X%02X,X ", aB[2], aB[1]);	break;
+			case AMOD_AbsoluteY: printf("$%02X%02X,Y ", aB[2], aB[1]);	break;
+			case AMOD_ZeroPage: printf("$00%02X ", aB[1]);				break;
+			case AMOD_ZeroPageX: printf("$%02X,X ", aB[1]);				break;
+			case AMOD_ZeroPageY: printf("$%02X,Y ", aB[1]);				break;
+			case AMOD_Indirect: printf("($%02X%02X) ", aB[2], aB[1]);	break;
+			case AMOD_IndirectX: printf("($%02X,X) ", aB[1]);			break;
+			case AMOD_IndirectY: printf("($%02X),Y ", aB[1]);			break;
+			default:
+				FF_ASSERT(false, "unhandled addressing mode.");
 		}
 		printf("\n");
 		addr += pAmodinfo->m_cB;
