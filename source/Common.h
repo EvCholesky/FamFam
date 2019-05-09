@@ -39,20 +39,26 @@ struct Buffer // tag = buf
 
 void ResizeBuffer(Buffer * pBuf, int cB);
 
+#define FF_DIM(arr) (sizeof(arr) / sizeof(*arr))
+#define FF_PMAC(arr) &arr[EWC_DIM(arr)]
+
 #if defined( __GNUC__ )
 	#define		FF_FORCE_INLINE	inline __attribute__((always_inline))
 	#define		FF_ALIGN(CB)		__attribute__((aligned(CB)))
 	#define 	FF_ALIGN_OF(T) 	__alignof__(T)
+	#define		FF_IS_ENUM(T)		__is_enum(T)
 	#define		FF_DEBUG_BREAK()	asm ("int $3")
 #elif defined( _MSC_VER )
 	#define		FF_FORCE_INLINE	__forceinline
 	#define		FF_ALIGN(CB)		__declspec(align(CB))
 	#define 	FF_ALIGN_OF(T) 	__alignof(T)
+	#define		FF_IS_ENUM(T)		__is_enum(T)
 	#define		FF_DEBUG_BREAK()	__debugbreak()
 #elif defined( __clang__)
 	#define		FF_FORCE_INLINE	inline __attribute__((always_inline))
 	#define		FF_ALIGN(CB)		__attribute__((aligned(CB)))
 	#define 	FF_ALIGN_OF(T) 	__alignof__(T)
+	#define		FF_IS_ENUM(T)		__is_enum(T)
 	#define		FF_DEBUG_BREAK()   asm("int $3")
 #endif
 
@@ -116,3 +122,173 @@ inline u16 U16Coerce(u64 n)		{ u16 nRet = (u16)n;	FF_ASSERT((u64)nRet == n, "u16
 inline u8 U8Coerce(u64 n)		{ u8 nRet = (u8)n;		FF_ASSERT((u64)nRet == n, "u8Coerce failure");  return nRet; }
 
 
+// template traits
+template <typename T> struct SStripConst				{ typedef T Type;	enum { F_STRIPPED= false }; };
+template <typename T> struct SStripConst<const T>		{ typedef T Type;	enum { F_STRIPPED= true }; };
+
+template <typename T> struct SStripReference			{ typedef T Type; 	enum { F_STRIPPED= false }; };
+template <typename T> struct SStripReference<T&>		{ typedef T Type; 	enum { F_STRIPPED= true }; };
+
+template <typename T> struct SStripPointer				{ typedef T Type; 	enum { F_STRIPPED= false }; };
+template <typename T> struct SStripPointer<T*>			{ typedef T Type; 	enum { F_STRIPPED= true }; };
+
+template <typename T> struct SIsReference				{ enum { V = false }; };
+template <typename T> struct SIsReference<T&>			{ enum { V = true }; };
+
+template <typename T> struct SIsPointer					{ enum { V = false }; };
+template <typename T> struct SIsPointer<T&>				{ enum { V = true }; };
+
+template <typename T> struct SIsSignedInt				{ enum { V = false }; };
+template <typename T> struct SIsUnsignedInt						{ enum { V = false }; };
+
+template <> struct SIsUnsignedInt<u8>							{ enum { V = true }; };
+template <> struct SIsUnsignedInt<u16>							{ enum { V = true }; };
+template <> struct SIsUnsignedInt<u32>							{ enum { V = true }; };
+template <> struct SIsUnsignedInt<u64>							{ enum { V = true }; };
+ 
+template <typename T> struct SIsInt								{ enum { V  = SIsSignedInt<T>::V  || SIsUnsignedInt<T>::V  }; };
+
+template <typename T> struct SIsFloat							{ enum { V = false }; };
+template <> struct SIsFloat<f32>								{ enum { V = true }; };
+template <> struct SIsFloat<f64>								{ enum { V = true }; };
+
+template <typename T> struct SIsBool							{ enum { V = false }; };
+template <> struct SIsBool<bool>								{ enum { V = true }; };
+
+template <typename T> struct SIsVoid							{ enum { V = false }; };
+template <> struct SIsVoid<void>								{ enum { V = true }; };
+
+template <typename T> struct SVoidSafeSizeof					{ enum { V = sizeof(T) }; };
+template <> struct SVoidSafeSizeof<void>						{ enum { V = 0 }; };
+
+// NOTE: can't just check static_cast<T>(-1) because it doesn't work for custom types
+template <typename T, bool IS_ENUM> struct SIsSignedSelector	{ enum { V = SIsFloat<T>::V || SIsSignedInt<T>::V }; };
+template <typename T> struct SIsSignedSelector<T, true>			{ enum { V = static_cast<T>(-1) < 0 }; };
+template <typename T> struct SIsSigned							{ enum { V = SIsSignedSelector<T, FF_IS_ENUM(T)>::V }; };
+
+template <typename T> struct SIsFundamentalType					{ enum { V  = 
+																		SIsPointer<T>::V  || 
+																		SIsReference<T>::V  || 
+																		SIsInt<T>::V  || 
+																		SIsFloat<T>::V  || 
+																		SIsBool<T>::V  || 
+																		FF_IS_ENUM(T) 
+																	}; 
+															};
+template <typename T>
+struct SArrayTraits
+{
+	typedef T Element;
+	enum { C_ELEMENTS = -1 };
+	enum { F_IS_ARRAY = false };
+};
+
+template <typename A, int C>
+struct SArrayTraits<A[C]>
+{
+	typedef A Element;
+	enum { C_ELEMENTS = C };
+	enum { F_IS_ARRAY = true };
+};
+
+template <typename T> struct SHasTrivialConstructor		{ enum { V  = SIsFundamentalType<T>::V  }; };
+template <typename T> struct SHasTrivialCopy			{ enum { V  = SIsFundamentalType<T>::V  }; };
+template <typename T> struct SHasTrivialDestructor		{ enum { V  = SIsFundamentalType<T>::V  }; };
+
+template <typename T, bool TRIVIAL_CONSTRUCT>
+struct SConstructSelector
+{
+	static void Construct(T * p)
+	{
+		FF_ASSERT( ((uintptr_t)p & (FF_ALIGN_OF(T)-1)) == 0, "trying to construct misaligned object" );
+		new (p) T;
+	}
+
+	static void ConstructN(T * p, size_t c)
+	{
+		FF_ASSERT( ((uintptr_t)p & (FF_ALIGN_OF(T)-1)) == 0, "trying to construct misaligned object" );
+		for (size_t i = 0; i < c; ++i)
+			new (p + i) T;
+	}
+};
+
+template <typename T>
+struct SConstructSelector<T, true> // trivial constructor
+{
+	static void Construct(T * p)					{ }
+	static void ConstructN(T * p, size_t c)			{ }
+};
+
+template <typename T, bool TRIVIAL_COPY>
+struct SCopySelector
+{
+	static void CopyConstruct(T * p, const T & orig)
+	{
+		FF_ASSERT( ((uintptr_t)p & (FF_ALIGN_OF(T)-1)) == 0, "trying to copy construct misaligned object" );
+		new (p) T(orig);
+	}
+
+	static void CopyConstructN(T * p, size_t c, const T & orig)
+	{
+		FF_ASSERT( ((uintptr_t)p & (FF_ALIGN_OF(T)-1)) == 0, "trying to copy construct misaligned object" );
+		for (size_t i = 0; i < c; ++i)
+			new (p + i) T(orig);
+	}
+
+	static void CopyConstructArray(T * pTDst, size_t cT, const T * pTSrc)
+	{
+		FF_ASSERT( ((uintptr_t)pTDst & (FF_ALIGN_OF(T)-1)) == 0, "trying to copy construct misaligned object" );
+		auto pTDstMax = pTDst + cT;
+		for (auto pTDstIt = pTDst; pTDstIt != pTDstMax; ++pTDstIt, ++pTSrc)
+			new (pTDstIt) T(*pTSrc);
+	}
+};
+
+template <typename T>
+struct SCopySelector<T, true> // trivial copy constructor
+{
+	static void CopyConstruct(T * p, const T & orig)					{ *p = orig; }
+	static void CopyConstructN(T * p, size_t c, const T & orig)		
+	{ 
+		for (T * pEnd = &p[c]; p != pEnd; ++p)
+			*p = orig;
+	}
+
+	static void CopyConstructArray(T * pTDst, size_t cT, const T * pTSrc)		
+	{ 
+		CopyAB(pTSrc, pTDst, sizeof(T) * cT);
+	}
+};
+
+template <typename T, bool TRIVIAL_DESTRUCT>
+struct SDestructSelector
+{
+	static void Destruct(T * p)
+	{
+		p->~T();
+	}
+
+	static void DestructN(T * p, size_t c)
+	{
+		for (size_t i = 0; i < c; ++i)
+			(p + i)->~T();
+	}
+};
+
+template <typename T>
+struct SDestructSelector<T, true> // trivial destructor 
+{
+	static void Destruct(T * p)					{ }
+	static void DestructN(T * p, size_t c)		{ }
+};
+
+template <typename T> void Construct(T * p)									{ SConstructSelector<T, SHasTrivialConstructor<T>::V >::Construct(p); }
+template <typename T> void ConstructN(T * p, size_t c)						{ SConstructSelector<T, SHasTrivialConstructor<T>::V >::ConstructN(p,c); }
+
+template <typename T> void CopyConstruct(T * p, const T & orig)				{ SCopySelector<T, SHasTrivialCopy<T>::V >::CopyConstruct(p, orig); }
+template <typename T> void CopyConstructN(T * p, size_t c, const T & orig)	{ SCopySelector<T, SHasTrivialCopy<T>::V >::CopyConstructN(p, c, orig); }
+template <typename T> void CopyConstructArray(T * pTDst, size_t cT, const T * pTSrc)	
+																			{ SCopySelector<T, SHasTrivialCopy<T>::V >::CopyConstructArray(pTDst, cT, pTSrc); }
+
+template <typename T> void Destruct(T * p)									{ SDestructSelector<T, SHasTrivialDestructor<T>::V >::Destruct(p); }
+template <typename T> void DestructN(T * p, size_t c)						{ SDestructSelector<T, SHasTrivialDestructor<T>::V >::DestructN(p,c); }

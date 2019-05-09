@@ -1,5 +1,6 @@
 
 #include "cpu.h"
+#include "Array.h"
 
 struct SFamicom;
 
@@ -97,6 +98,7 @@ struct Cart
 					Cart()
 					:m_mapperk(MAPPERK_Nil)
 					,m_pHead(nullptr)
+					,m_aryAddrInstruct(1014)
 					,m_pBPrgRom(nullptr)
 					,m_pBChrRom(nullptr)
 					,m_cBPrgRom(0)
@@ -105,6 +107,7 @@ struct Cart
 
 	MAPPERK			m_mapperk;
 	RomHeader *		m_pHead;
+	DynAry<u16>		m_aryAddrInstruct;	// cached starting instructions for each instruction (for disasembly window)
 
 	u8 *			m_pBPrgRom;
 	u8 *			m_pBChrRom;

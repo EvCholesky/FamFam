@@ -27,6 +27,7 @@
     <ClCompile Include="extern\imgui\imgui_widgets.cpp" />
     <ClCompile Include="source\Common.cpp" />
     <ClCompile Include="source\CPU.cpp" />
+    <ClCompile Include="source\Debugger.cpp" />
     <ClCompile Include="source\Main.cpp" />
     <ClCompile Include="source\Platform.cpp" />
     <ClCompile Include="source\Rom.cpp" />
@@ -37,8 +38,10 @@
     <ClInclude Include="extern\imgui\imconfig.h" />
     <ClInclude Include="extern\imgui\imgui.h" />
     <ClInclude Include="extern\imgui\imgui_internal.h" />
+    <ClInclude Include="source\Array.h" />
     <ClInclude Include="source\Common.h" />
     <ClInclude Include="source\CPU.h" />
+    <ClInclude Include="source\Debugger.h" />
     <ClInclude Include="source\Opcodes.h" />
     <ClInclude Include="source\Platform.h" />
     <ClInclude Include="source\PPU.h" />

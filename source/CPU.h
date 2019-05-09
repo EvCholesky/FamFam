@@ -186,8 +186,24 @@ struct AddrModeInfo // tag = amodinfo
 
 const AddrModeInfo * PAmodinfoFromAmrw(AMRW amrw);
 
-#define OPCODE(NAME, HINT) OPK_##NAME,
-#define ILLOPC(NAME, HINT) OPK_##NAME,
+enum OPCAT
+{
+	OPCAT_Arithmetic,
+	OPCAT_Branch,
+	OPCAT_Flags,
+	OPCAT_Illegal,
+	OPCAT_Logic,
+	OPCAT_Nop,
+	OPCAT_Memory,
+	OPCAT_Stack,
+	OPCAT_Transfer,
+
+	OPCAT_Max,
+	OPCAT_Min = 0,
+	OPCAT_Nil = -1,
+};
+
+#define OPCODE(NAME, OPC, HINT) OPK_##NAME,
 enum OPK
 {
 	OPCODE_KIND_INFO
@@ -201,13 +217,12 @@ enum OPK
 	OPK_IllegalMax	= OPK_Max
 };
 #undef OPCODE
-#undef ILLOPC
 
 struct OpkInfo // tag = opkinfo
 {
 	const char *	m_pChzName;
 	const char *	m_pChzHint;
-	bool			m_fIsLegal;
+	OPCAT			m_opcat;
 };
 
 struct OpInfo // tag = opinfo

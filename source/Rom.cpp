@@ -60,6 +60,23 @@ int CPageRom(int nMSB, int nLSB)
 	return n;
 }
 
+void AppendAddrOffset(DynAry<u16> * pAryAddrInstruct, u16 addrBase, u8 * pBPrg, int cB)
+{
+	FF_ASSERT(pAryAddrInstruct->FIsEmpty() || pAryAddrInstruct->Last() < addrBase, "instructions added out of order");
+
+	int dB = 0;
+	while (dB < cB)
+	{
+		u8 bOpcode = pBPrg[dB];
+		auto pOpinfo = POpinfoFromOpcode(bOpcode); 
+		auto pOpkinfo = POpkinfoFromOPK(pOpinfo->m_opk);
+		auto pAmodinfo = PAmodinfoFromAmrw(pOpinfo->m_amrw);
+
+		pAryAddrInstruct->Append(dB + addrBase);
+		dB += pAmodinfo->m_cB;
+	}
+}
+
 bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart)
 {
 	RomHeader * pHead = (RomHeader *)pB;
@@ -101,6 +118,7 @@ bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart)
 
 	// PRG rom data
 	pCart->m_pBPrgRom = pBTrainer + cBTrainer;
+	AppendAddrOffset(&pCart->m_aryAddrInstruct, 0xC000, pCart->m_pBPrgRom, pCart->m_cBPrgRom);
 
 	// Chr rom data
 	pCart->m_pBChrRom = pCart->m_pBPrgRom + pCart->m_cBPrgRom;

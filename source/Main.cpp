@@ -1,5 +1,6 @@
 
 #include "CPU.h"
+#include "Debugger.h"
 #include "imgui.h"
 #include "examples/imgui_impl_glfw.h"
 #include "examples/imgui_impl_opengl2.h"
@@ -43,7 +44,6 @@ int main(int cpChzArg, const char * apChzArg[])
 
 		u16 addrStartup = U16ReadAddress(&fam, kAddrReset);
 		printf("loaded '%s'   reset vector = %x\n", apChzArg[1], addrStartup);
-		DumpAsm(&fam, addrStartup, 100);
 	}
 
 	Platform plat;
@@ -61,6 +61,7 @@ int main(int cpChzArg, const char * apChzArg[])
     ImGui_ImplOpenGL2_Init();
 
 	bool fShowImguiDemoWindow = true;
+	bool fShowDisasmWindow = true;
 	while (!FShouldWindowClose(&plat))
 	{
 		ClearScreen(&plat);
@@ -73,6 +74,11 @@ int main(int cpChzArg, const char * apChzArg[])
         if (fShowImguiDemoWindow)
 		{
             ImGui::ShowDemoWindow(&fShowImguiDemoWindow);
+		}
+
+		if (fShowDisasmWindow)
+		{
+			UpdateDisassemblyWindow(&fam, &fShowDisasmWindow);
 		}
 
 		// Render dear imgui into screen

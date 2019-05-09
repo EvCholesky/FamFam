@@ -27,14 +27,12 @@ const AddrModeInfo * PAmodinfoFromAmrw(AMRW amrw)
 
 const OpkInfo * POpkinfoFromOPK(OPK opk)
 {
-#define OPCODE(NAME, HINT) {#NAME, #HINT, true},
-#define ILLOPC(NAME, HINT) {#NAME, #HINT, false},
+#define OPCODE(NAME, OPC, HINT) {#NAME, #HINT, OPCAT_##OPC},
 	static const OpkInfo s_mpOpkOpkinfo[] =
 	{
 		OPCODE_KIND_INFO
 	};
 #undef OPCODE
-#undef ILLOPC
 
 	if (opk == OPK_Nil)
 		return nullptr;
@@ -88,7 +86,7 @@ void DumpAsm(Famicom * pFam, u16 addrMin, int cB)
 			default: FF_ASSERT(false, "unexpected opcode size");
 		}
 
-		printf("%s%s ", (pOpkinfo->m_fIsLegal) ? "  " : "!!", pOpinfo->m_pChzMnemonic);
+		printf("%s%s ", (pOpkinfo->m_opcat == OPCAT_Illegal) ? "  " : "!!", pOpinfo->m_pChzMnemonic);
 
 		switch(pAmodinfo->m_amod)
 		{

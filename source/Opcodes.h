@@ -24,81 +24,81 @@
 
 //				(Opcode, Hint)
 #define OPCODE_KIND_INFO \
-		OPCODE(ADC, "Add With Carry") \
-		OPCODE(AND, "Logical And") \
-		OPCODE(ASL, "Arithmetic Shift Left") \
-		OPCODE(BCC, "Branch if Carry Clear") \
-		OPCODE(BCS, "Branch if Carry Set") \
-		OPCODE(BEQ, "Branch if Equal") \
-		OPCODE(BIT, "Bit Test") \
-		OPCODE(BMI, "Branch if Minus") \
-		OPCODE(BNE, "Branch if not Equal") \
-		OPCODE(BPL, "Branch if Positive") \
-		OPCODE(BRK, "Force Interrupt") \
-		OPCODE(BVC, "Branch if Overflow Clear") \
-		OPCODE(BVS, "Branch if Overflow Set") \
-		OPCODE(CLC, "Clear Carry Flag") \
-		OPCODE(CLD, "Clear Decimal Mode") \
-		OPCODE(CLI, "Clear Interrupt Disable") \
-		OPCODE(CLV, "Clear Overflow Flag") \
-		OPCODE(CMP, "Compare") \
-		OPCODE(CPX, "Compare X Register") \
-		OPCODE(CPY, "Compare Y Register") \
-		OPCODE(DEC, "Decrement Memory") \
-		OPCODE(DEX, "Decrement X Register") \
-		OPCODE(DEY, "Decrement Y Register") \
-		OPCODE(EOR, "Exclusive OR") \
-		OPCODE(INC, "Increment Memory") \
-		OPCODE(INX, "Increment X Register") \
-		OPCODE(INY, "Increment Y Register") \
-		OPCODE(JMP, "Jump") \
-		OPCODE(JSR, "Jump to Subroutine") \
-		OPCODE(LDA, "Load to Accumulator") \
-		OPCODE(LDX, "Load X Register") \
-		OPCODE(LDY, "Load Y Register") \
-		OPCODE(LSR, "Logical Shift Right") \
-		OPCODE(NOP, "No Operation") \
-		OPCODE(ORA, "Logical Inclusive OR") \
-		OPCODE(PHA, "Push Accumulator") \
-		OPCODE(PHP, "Push Processor Status") \
-		OPCODE(PLA, "Pull Accumulator") \
-		OPCODE(PLP, "Pull Processor Status") \
-		OPCODE(ROL, "Rotate Left") \
-		OPCODE(ROR, "Rotate Right") \
-		OPCODE(RTI, "Return From Interrupt") \
-		OPCODE(RTS, "Return From Subroutine") \
-		OPCODE(SBC, "Subtract With Carry") \
-		OPCODE(SEC, "Set Carry Flag") \
-		OPCODE(SED, "Set Decimal Flag") \
-		OPCODE(SEI, "Set Interrupt Disable") \
-		OPCODE(STA, "Store Accumulator") \
-		OPCODE(STX, "Store X Register") \
-		OPCODE(STY, "Store Y Register") \
-		OPCODE(TAX, "Transfer Accumulator to X") \
-		OPCODE(TAY, "Transfer Accumulator to Y") \
-		OPCODE(TSX, "Transfer Stack Pointer to X") \
-		OPCODE(TXA, "Transfer X to Accumulator") \
-		OPCODE(TXS, "Transfer X to Stack Pointer") \
-		OPCODE(TYA, "Transfer Y to Accumulator") \
-		ILLOPC(AHX, "ILLEGAL: ") \
-		ILLOPC(ALR, "ILLEGAL: ") \
-		ILLOPC(ANC, "ILLEGAL: ") \
-		ILLOPC(ARR, "ILLEGAL: ") \
-		ILLOPC(AXS, "ILLEGAL: X := A & X - Immediate") \
-		ILLOPC(DCP, "ILLEGAL: ") \
-		ILLOPC(ISC, "ILLEGAL: ") \
-		ILLOPC(KIL, "ILLEGAL: Kill Proccess") \
-		ILLOPC(LAX, "ILLEGAL: ") \
-		ILLOPC(LAS, "ILLEGAL: ") \
-		ILLOPC(RLA, "ILLEGAL: ") \
-		ILLOPC(RRA, "ILLEGAL: ") \
-		ILLOPC(SAX, "ILLEGAL: Store A & X") \
-		ILLOPC(SHX, "ILLEGAL: ") \
-		ILLOPC(SHY, "ILLEGAL: ") \
-		ILLOPC(SLO, "ILLEGAL: ") \
-		ILLOPC(SRE, "ILLEGAL: ") \
-		ILLOPC(TAS, "ILLEGAL: ") \
-		ILLOPC(XAA, "ILLEGAL: A := X & Immediate, UNSTABLE!")
+		OPCODE(ADC, Arithmetic, "Add With Carry") \
+		OPCODE(AND, Logic, "Logical And") \
+		OPCODE(ASL, Arithmetic, "Arithmetic Shift Left") \
+		OPCODE(BCC, Branch, "Branch if Carry Clear") \
+		OPCODE(BCS, Branch, "Branch if Carry Set") \
+		OPCODE(BEQ, Branch, "Branch if Equal") \
+		OPCODE(BIT, Flags, "Bit Test") \
+		OPCODE(BMI, Branch, "Branch if Minus") \
+		OPCODE(BNE, Branch, "Branch if not Equal") \
+		OPCODE(BPL, Branch, "Branch if Positive") \
+		OPCODE(BRK, Branch, "Force Interrupt") \
+		OPCODE(BVC, Branch, "Branch if Overflow Clear") \
+		OPCODE(BVS, Branch, "Branch if Overflow Set") \
+		OPCODE(CLC, Flags, "Clear Carry Flag") \
+		OPCODE(CLD, Flags, "Clear Decimal Mode") \
+		OPCODE(CLI, Flags, "Clear Interrupt Disable") \
+		OPCODE(CLV, Flags, "Clear Overflow Flag") \
+		OPCODE(CMP, Arithmetic, "Compare") \
+		OPCODE(CPX, Arithmetic, "Compare X Register") \
+		OPCODE(CPY, Arithmetic, "Compare Y Register") \
+		OPCODE(DEC, Arithmetic, "Decrement Memory") \
+		OPCODE(DEX, Arithmetic, "Decrement X Register") \
+		OPCODE(DEY, Arithmetic, "Decrement Y Register") \
+		OPCODE(EOR, Logic, "Exclusive OR") \
+		OPCODE(INC, Arithmetic, "Increment Memory") \
+		OPCODE(INX, Arithmetic, "Increment X Register") \
+		OPCODE(INY, Arithmetic, "Increment Y Register") \
+		OPCODE(JMP, Branch, "Jump") \
+		OPCODE(JSR, Branch, "Jump to Subroutine") \
+		OPCODE(LDA, Memory, "Load to Accumulator") \
+		OPCODE(LDX, Memory, "Load X Register") \
+		OPCODE(LDY, Memory, "Load Y Register") \
+		OPCODE(LSR, Arithmetic, "Logical Shift Right") \
+		OPCODE(NOP, Nop, "No Operation") \
+		OPCODE(ORA, Logic, "Logical Inclusive OR") \
+		OPCODE(PHA, Stack, "Push Accumulator") \
+		OPCODE(PHP, Stack, "Push Processor Status") \
+		OPCODE(PLA, Stack, "Pull Accumulator") \
+		OPCODE(PLP, Stack, "Pull Processor Status") \
+		OPCODE(ROL, Arithmetic, "Rotate Left") \
+		OPCODE(ROR, Arithmetic, "Rotate Right") \
+		OPCODE(RTI, Branch, "Return From Interrupt") \
+		OPCODE(RTS, Branch, "Return From Subroutine") \
+		OPCODE(SBC, Arithmetic, "Subtract With Carry") \
+		OPCODE(SEC, Flags, "Set Carry Flag") \
+		OPCODE(SED, Flags, "Set Decimal Flag") \
+		OPCODE(SEI, Flags, "Set Interrupt Disable") \
+		OPCODE(STA, Memory, "Store Accumulator") \
+		OPCODE(STX, Memory, "Store X Register") \
+		OPCODE(STY, Memory, "Store Y Register") \
+		OPCODE(TAX, Transfer, "Transfer Accumulator to X") \
+		OPCODE(TAY, Transfer, "Transfer Accumulator to Y") \
+		OPCODE(TSX, Transfer, "Transfer Stack Pointer to X") \
+		OPCODE(TXA, Transfer, "Transfer X to Accumulator") \
+		OPCODE(TXS, Transfer, "Transfer X to Stack Pointer") \
+		OPCODE(TYA, Transfer, "Transfer Y to Accumulator") \
+		OPCODE(AHX, Illegal, "ILLEGAL: ") \
+		OPCODE(ALR, Illegal, "ILLEGAL: ") \
+		OPCODE(ANC, Illegal, "ILLEGAL: ") \
+		OPCODE(ARR, Illegal, "ILLEGAL: ") \
+		OPCODE(AXS, Illegal, "ILLEGAL: X := A & X - Immediate") \
+		OPCODE(DCP, Illegal, "ILLEGAL: ") \
+		OPCODE(ISC, Illegal, "ILLEGAL: ") \
+		OPCODE(KIL, Illegal, "ILLEGAL: Kill Proccess") \
+		OPCODE(LAX, Illegal, "ILLEGAL: ") \
+		OPCODE(LAS, Illegal, "ILLEGAL: ") \
+		OPCODE(RLA, Illegal, "ILLEGAL: ") \
+		OPCODE(RRA, Illegal, "ILLEGAL: ") \
+		OPCODE(SAX, Illegal, "ILLEGAL: Store A & X") \
+		OPCODE(SHX, Illegal, "ILLEGAL: ") \
+		OPCODE(SHY, Illegal, "ILLEGAL: ") \
+		OPCODE(SLO, Illegal, "ILLEGAL: ") \
+		OPCODE(SRE, Illegal, "ILLEGAL: ") \
+		OPCODE(TAS, Illegal, "ILLEGAL: ") \
+		OPCODE(XAA, Illegal, "ILLEGAL: A := X & Immediate, UNSTABLE!")
 
 
 #define OPCODE_TABLE \
