@@ -5,14 +5,34 @@
 
 Famicom g_fam;
 
-const AddrModeInfo * PAmodinfoFromAmrw(AMRW amrw)
+const AddrModeInfo * PAmodinfoFromAmod(AMOD amod)
 {
-#define ADDRMODE(NAME, MODE, CB) { AMRW_##NAME, AMOD_##MODE, CB },
-	static const AddrModeInfo s_mpAmrwAmodinfo[] =
+#define INFO(AM, DESC) { AMOD_##AM, DESC },
+	static const AddrModeInfo s_mpAmodAmodinfo[] =
 	{
-		ADDRESSING_MODE_INFO
+		ADDRESS_MODE_INFO
 	};
-#undef ADDRMODE
+#undef INFO
+
+	if (amod == AMOD_Nil)
+		return nullptr;
+	if (amod < AMOD_Min || amod > AMOD_Max)
+	{
+		//ASSERTCHZ(false)
+		return nullptr;
+	}
+
+	return &s_mpAmodAmodinfo[amod];
+}
+
+const AddrModeRwInfo * PAmrwinfoFromAmrw(AMRW amrw)
+{
+#define INFO(NAME, MODE, CB) { AMRW_##NAME, AMOD_##MODE, CB },
+	static const AddrModeRwInfo s_mpAmrwAmrwinfo[] =
+	{
+		ADDRESS_MODE_RW_INFO
+	};
+#undef INFO
 
 	if (amrw == AMRW_Nil)
 		return nullptr;
@@ -22,7 +42,7 @@ const AddrModeInfo * PAmodinfoFromAmrw(AMRW amrw)
 		return nullptr;
 	}
 
-	return &s_mpAmrwAmodinfo[amrw];
+	return &s_mpAmrwAmrwinfo[amrw];
 }
 
 const OpkInfo * POpkinfoFromOPK(OPK opk)
@@ -62,6 +82,186 @@ IMapper * PMapperFromMapperk(MAPPERK mapperk)
 	return nullptr;
 }
 
+u8 U8MemRead(MemoryMap * pMemmp, u16 addr)
+{
+#if OLD_MAPPER
+	MemorySlice * pMemsl = &pMemmp->m_aMemly[addr >> 10];
+	u16 addrSlice = addr & 0x3FF;
+	u8 * pB = pMemsl->m_aPRead[addrSlice >> pMemsl->m_cBitShift];
+
+	// if memory isn't mapped at this location return the last thing on the bus 
+	if (!pB)
+		return pMemmp->m_bPrev;
+
+	u8 b = *(pB + (addrSlice & pMemsl->m_nMask));
+	pMemmp->m_bPrev = b;
+	return b;
+#else
+	auto iMemsl = pMemmp->m_mpAddrISlice[addr];
+	auto pMemsl = &pMemmp->m_aMemsl[iMemsl];
+	if ((pMemsl->m_fmemsl & FMEMSL_Unmapped) != 0)
+	{
+		return pMemmp->m_bPrev;
+	}
+
+	u32 dAddr = addr - pMemsl->m_addrBase;
+	dAddr = dAddr & pMemsl->m_nMaskMirror;
+
+	u8 b = pMemsl->m_pB[dAddr];
+	pMemmp->m_bPrev = b;
+	return b;
+#endif
+}
+
+void U8MemWrite(MemoryMap * pMemmp, u16 addr, u8 b)
+{
+#if OLD_MAPPER
+	MemorySlice * pMemsl = &pMemmp->m_aMemly[addr >> 10];
+	u16 addrSlice = addr & 0x3FF;
+	u8 * pB = pMemsl->m_aPRead[addrSlice >> pMemsl->m_cBitShift];
+
+	pMemmp->m_bPrev = b;
+
+	// we expect that unmapped memory at this location has been pointed at dummy memory
+	*(pB + (addrSlice & pMemsl->m_nMask)) = b;
+#else
+#endif
+}
+
+#if OLD_MAPPER
+void MapMemorySlicesToRam(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
+{
+}
+
+void MapMemorySlicesToRom(MemoryMap * pMemmp, u32 addrMin, u8 * pBRom, int cBRom)
+{
+}
+
+void MapMirroredMemorySlices(MemoryMap * pMemmp, u32 addSrc, int cB, u32 addrMirrorMin, u32 addrMirrorMax)
+{
+}
+
+void UnmapMemorySlices(MemoryMap * pMemmp, u32 addrMin, u8 * pBRom, int cBRom)
+{
+}
+#else
+MemoryMap::MemoryMap()
+:m_bPrev(0)
+,m_cMemsl(1)	// allocate the first memory slice as an invalid slice
+{
+	ZeroAB(m_aMemsl, sizeof(m_aMemsl));
+	ZeroAB(m_mpAddrISlice, sizeof(m_mpAddrISlice));
+}
+
+void ClearMemmp(MemoryMap * pMemmp)
+{
+	MemorySlice * pMemslMax = &pMemmp->m_aMemsl[pMemmp->m_cMemsl];
+	for (MemorySlice * pMemslIt = pMemmp->m_aMemsl; pMemslIt != pMemslMax; ++pMemslIt)
+	{
+		if (pMemslIt->m_pB)
+		{
+			free(pMemslIt->m_pB);
+			ZeroAB(pMemslIt, sizeof(*pMemslIt)); 
+		}
+	}
+
+	ZeroAB(pMemmp->m_mpAddrISlice, sizeof(pMemmp->m_mpAddrISlice));
+}
+
+
+void VerifyMemorySpanClear(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
+{
+	// make sure this span is not overlapping any other spans
+	MemorySlice * pMemslMax = &pMemmp->m_aMemsl[pMemmp->m_cMemsl];
+	for (auto pMemsl = pMemmp->m_aMemsl; pMemsl != pMemslMax; ++pMemsl)
+	{
+		FF_ASSERT(addrMax < pMemsl->m_addrBase || addrMin >= u32(pMemsl->m_addrBase + pMemsl->m_cB), "detected memory span overlap");
+	}
+
+	addrMax = min(addrMax, FF_DIM(pMemmp->m_mpAddrISlice));
+	for (u32 addrIt = addrMin; addrIt < addrMax; ++addrIt)
+	{
+		FF_ASSERT(pMemmp->m_mpAddrISlice[addrIt] == 0);
+	}
+}
+
+void VerifyRom(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
+{
+}
+
+void VerifyMirror(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
+{
+}
+
+MemorySlice * IMemslAllocate(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
+{
+	VerifyMemorySpanClear(pMemmp, addrMin, addrMax);
+	auto iMemsl = pMemmp->m_cMemsl++;	
+
+	addrMax = min(addrMin, FF_DIM(pMemmp->m_mpAddrISlice));
+	for (u32 addrIt = addrMin; addrIt < addrMax; ++addrIt)
+	{
+		pMemmp->m_mpAddrISlice[addrIt] = iMemsl;
+	}
+
+	MemorySlice * pMemsl = &pMemmp->m_aMemsl[iMemsl];
+	pMemsl->m_fmemsl |= FMEMSL_InUse;
+	return pMemsl;
+}
+
+MemorySlice * PMemslMapRam(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
+{
+	auto pMemsl = IMemslAllocate(pMemmp, addrMin, addrMax);
+	pMemsl->m_addrBase = addrMin;
+	pMemsl->m_cB = addrMax - addrMin;
+	pMemsl->m_pB = (u8 *)malloc(pMemsl->m_cB);
+	return pMemsl;
+}
+
+MemorySlice * PMemslMapRom(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
+{
+	auto pMemsl = IMemslAllocate(pMemmp, addrMin, addrMax);
+	pMemsl->m_addrBase = addrMin;
+	pMemsl->m_cB = addrMax - addrMin;
+	pMemsl->m_pB = (u8 *)malloc(pMemsl->m_cB);
+	pMemsl->m_fmemsl |= FMEMSL_ReadOnly;
+	return pMemsl;
+}
+
+MemorySlice * PMemslConfigureUnmapped(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
+{
+	auto pMemsl = IMemslAllocate(pMemmp, addrMin, addrMax);
+	pMemsl->m_addrBase = addrMin;
+	pMemsl->m_cB = addrMax - addrMin;
+	pMemsl->m_fmemsl |= FMEMSL_Unmapped;
+	return pMemsl;
+}
+
+void MapMirrored(MemoryMap * pMemmp, MemorySlice * pMemsl, u32 addrMin, u32 addrMax)
+{
+	VerifyMemorySpanClear(pMemmp, addrMin, addrMax);
+
+	u8 iMemsl = U8Coerce(IFromP(pMemmp->m_aMemsl, FF_DIM(pMemmp->m_aMemsl), pMemsl));
+	addrMax = min(addrMin, FF_DIM(pMemmp->m_mpAddrISlice));
+	for (u32 addrIt = addrMin; addrIt < addrMax; ++addrIt)
+	{
+		pMemmp->m_mpAddrISlice[addrIt] = iMemsl;
+	}
+}
+#endif
+
+void TestMemoryMap(MemoryMap * pMemmp)
+{
+	// make sure all spans are mapped or unmapped
+	for (u32 addr = 0; addr < kCBAddressable; ++addr)
+	{
+		FF_ASSERT(pMemmp->m_mpAddrISlice[addr] != 0, "unmapped region");
+	}
+
+	VerifyRom(pMemmp, 0x0000, 0x0800);
+	VerifyMirror(pMemmp, 0x0000, 0x0800);
+}
+
 void DumpAsm(Famicom * pFam, u16 addrMin, int cB)
 {
 	u32 addrMax = addrMin + cB;
@@ -72,7 +272,7 @@ void DumpAsm(Famicom * pFam, u16 addrMin, int cB)
 		aB[0] = U8ReadAddress(pFam, addr);
 		auto pOpinfo = POpinfoFromOpcode(aB[0]); 
 		auto pOpkinfo = POpkinfoFromOPK(pOpinfo->m_opk);
-		auto pAmodinfo = PAmodinfoFromAmrw(pOpinfo->m_amrw);
+		auto pAmodinfo = PAmrwinfoFromAmrw(pOpinfo->m_amrw);
 
 		for (int iB=1; iB<pAmodinfo->m_cB; ++iB)
 		{

@@ -70,10 +70,112 @@ void AppendAddrOffset(DynAry<u16> * pAryAddrInstruct, u16 addrBase, u8 * pBPrg, 
 		u8 bOpcode = pBPrg[dB];
 		auto pOpinfo = POpinfoFromOpcode(bOpcode); 
 		auto pOpkinfo = POpkinfoFromOPK(pOpinfo->m_opk);
-		auto pAmodinfo = PAmodinfoFromAmrw(pOpinfo->m_amrw);
+		auto pAmrwinfo = PAmrwinfoFromAmrw(pOpinfo->m_amrw);
 
 		pAryAddrInstruct->Append(dB + addrBase);
-		dB += pAmodinfo->m_cB;
+		dB += pAmrwinfo->m_cB;
+	}
+}
+
+//void MapMemorySlicesToRam(MemoryMap * pMemmp, u16 addrMin, u16 addrMax)
+//void MapMemorySlicesToRom(MemoryMap * pMemmp, u16 addrMin, u8 * pBRom, int cBRom)
+//void MapMirroredMemorySlices(MemoryMap * pMemmp, u16 addSrc, int cB, u16 addrMirrorMin, u16 addrMirrorMax)
+//void UnmapMemorySlices(MemoryMap * pMemmp, u16 addrMin, u8 * pBRom, int cBRom)
+
+void MapMemoryCommon(MemoryMap * pMemmp)
+{
+	/*
+	MapMemorySlicesToRam(pMemmp, 0x0, 0x800);					// bottom 2K
+	MapMirroredMemorySlices(pMemmp, 0, 0x800, 0x800, 0x2000);	// mirrors to 8K
+
+	MapMemorySlicesToRam(pMemmp, 0x2000, 0x8);	// PPU registers
+	MapMirroredMemorySlices(pMemmp, 0x2000, 0x8, 0x2008, 0x4000);	// mirrors to 16k
+
+	MapMemorySlicesToRam(pMemmp, 0x4000, 0x18);						// APU and IO Registers
+	MapMirroredMemorySlices(pMemmp, 0x4000, 0x18, 0x4018, 0x401F);	//
+	*/
+
+	auto pMemslBase = PMemslMapRam(pMemmp, 0x0, 0x800);				// bottom 2K
+	MapMirrored(pMemmp, pMemslBase, 0x800, 0x2000);					// mirrors to 8K
+
+	auto pMemslPpuReg = PMemslMapRam(pMemmp, 0x2000, 0x8);			// PPU registers
+	MapMirrored(pMemmp, pMemslPpuReg, 0x2008, 0x4000);				// mirrors to 16k
+
+	auto pMemslApuReg = PMemslMapRam(pMemmp, 0x4000, 0x18);			// APU and IO Registers
+	(void)PMemslConfigureUnmapped(pMemmp, 0x4018, 0x4020);			// unused APU and IO test space
+	//MapMirrored(pMemmp, pMemslApuReg, 0x4018, 0x401F);
+}
+
+bool FTrySetupMapperNrom(MemoryMap* pMemmp, Cart* pCart)
+{
+	MapMemoryCommon(pMemmp);
+	(void)PMemslConfigureUnmapped(pMemmp, 0x4020, 0x8000);
+	
+	switch (pCart->m_cBPrgRom)
+	{
+	case FF_KIB(16):
+		{
+			auto pMemslPrg = PMemslMapRom(pMemmp, 0x8000, FF_KIB(16));
+			MapMirrored(pMemmp, pMemslPrg, 0xC000, 0x10000);
+		}break;
+	case FF_KIB(32):
+		(void)PMemslMapRom(pMemmp, 0x8000, FF_KIB(32));
+		break;
+
+	default:
+		ShowError("unexpected PRG rom size %d bytes", pCart->m_cBPrgRom);
+		return false;
+	}
+
+	TestMemoryMap(pMemmp);
+	return true;
+}
+
+bool FTrySetupMapperMmc1(MemoryMap* pMemmp, Cart* pCart)
+{
+	MapMemoryCommon(pMemmp);
+	u32 addrUnmappedMax = 0x8000;
+	if (pCart->m_cBPrgRam)
+	{
+		if (pCart->m_cBPrgRam != FF_KIB(8))
+		{
+			ShowError("Unexpected PRG ram size '%d' bytes", pCart->m_cBPrgRam);
+			return false;
+		}
+
+		addrUnmappedMax = 0x6000;
+		auto pMemslPrgRam = PMemslMapRam(pMemmp, 0x6000, FF_KIB(8));
+	}
+
+	(void)PMemslConfigureUnmapped(pMemmp, 0x4020, addrUnmappedMax);
+
+	// * Some tests have found (citation needed) that the power on behavior has the last 32k
+	// mapped at 0x8000..0xFFFF
+
+	auto pMemslPrg0 = PMemslMapRom(pMemmp, 0x6000, FF_KIB(8));
+	auto pMemslPrg1 = PMemslMapRom(pMemmp, 0x6000, FF_KIB(8));
+	TestMemoryMap(pMemmp);
+	return true;
+}
+
+bool FTrySetupMapperUxrRom(MemoryMap* pMemmp, Cart* pCart)
+{
+	MapMemoryCommon(pMemmp);
+	FF_ASSERT(false, "TBD");
+
+	return false;
+}
+
+bool FTrySetupMemoryMapper(MemoryMap * pMemmp, Cart * pCart)
+{
+	switch(pCart->m_mapperk)
+	{
+	case MAPPERK_NROM:	return FTrySetupMapperNrom(pMemmp, pCart);
+	case MAPPERK_MMC1:	return FTrySetupMapperMmc1(pMemmp, pCart);
+	case MAPPERK_UxROM:	return FTrySetupMapperUxRom(pMemmp, pCart);
+	default:
+		ShowError("Unknown mapper type");
+		return false;
 	}
 }
 

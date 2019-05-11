@@ -47,3 +47,40 @@ void FFAssertHandler(const char* pChzFile, u32 line, const char* pChzCondition, 
 		printf("\n");
 	}
 }
+
+void ZeroAB(void * pDest, size_t cB)
+{
+	memset(pDest, 0, cB);
+}
+
+void CopyAB(const void * pSource, void * pDest, size_t cB)
+{
+	memcpy(pDest, pSource, cB);
+}
+
+void ShowErrorV(const char * pChzFormat, va_list ap)
+{
+	printf("Error: ");
+	vprintf(pChzFormat, ap);
+}
+
+void ShowError(const char* pChzFormat, ...)
+{
+	va_list ap;
+	va_start(ap, pChzFormat);
+	ShowErrorV(pChzFormat, ap);
+}
+
+void ShowInfoV(const char * pChzFormat, va_list ap)
+{
+	printf("Error: ");
+	vprintf(pChzFormat, ap);
+}
+
+void ShowInfo(const char * pChzFormat, ...)
+{
+	va_list ap;
+	va_start(ap, pChzFormat);
+	ShowInfoV(pChzFormat, ap);
+}
+

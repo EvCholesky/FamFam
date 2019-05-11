@@ -62,7 +62,7 @@ void ResizeBuffer(Buffer * pBuf, int cB);
 	#define		FF_DEBUG_BREAK()   asm("int $3")
 #endif
 
-
+#define FF_KIB(CB) (CB * 1024)
 
 void FFAssertHandler( const char* pChzFile, u32 line, const char* pChzCondition, const char* pChzMessage = 0, ...);
 
@@ -292,3 +292,20 @@ template <typename T> void CopyConstructArray(T * pTDst, size_t cT, const T * pT
 
 template <typename T> void Destruct(T * p)									{ SDestructSelector<T, SHasTrivialDestructor<T>::V >::Destruct(p); }
 template <typename T> void DestructN(T * p, size_t c)						{ SDestructSelector<T, SHasTrivialDestructor<T>::V >::DestructN(p,c); }
+
+void ZeroAB(void * pDest, size_t cB);
+void CopyAB(const void * pSource, void * pDest, size_t cB);
+
+// find index of element pointed to by 'pT' inside array 'aT' 
+template <typename T>
+size_t IFromP(const T * aT, size_t cT, const T * pT)
+{ 
+	size_t iT = ((uintptr_t)pT - (uintptr_t)aT) / sizeof(T); 
+	FF_ASSERT((iT >= 0) & (iT < cT), "pointer not contained within array bounds");
+	return iT; 
+}
+
+void ShowErrorV(const char * pChzFormat, va_list ap);
+void ShowError(const char * pChzFormat, ...);
+void ShowInfoV(const char * pChzFormat, va_list ap);
+void ShowInfo(const char * pChzFormat, ...);

@@ -1,25 +1,44 @@
 #pragma once
 // various macro tables for opcodes and addressing modes 
 
+		// AMOD				Description
+#define ADDRESS_MODE_INFO \
+	INFO(Implicit,		"Implicit") \
+	INFO(Immediate,		"Immediate: val = op8") \
+	INFO(Relative,		"Relative: PC = PC + op8") \
+	INFO(Accumulator,	"Accumulator: val = A register") \
+	INFO(Absolute,		"Absolute: val = op16") \
+	INFO(AbsoluteX,		"AbsoluteX: val = op16 + X") \
+	INFO(AbsoluteY,		"AbsoluteY: val = op16 + Y") \
+	INFO(ZeroPage,		"Zero Page: val = read(op8)") \
+	INFO(ZeroPageX,		"Zero Page,X: val = read((operand + X) & 0xFF)") \
+	INFO(ZeroPageY,		"Zero Page,Y: val = read((operand + Y) & 0xFF)") \
+	INFO(Indirect,		"Indirect: PC = read(op16) | (read(op16 + 1) << 8)") \
+	INFO(IndirectX,		"IndirectX: val = read(read((op8 + X) & 0xFF) | read((op8 + X + 1) & 0xFF) << 8") \
+	INFO(IndirectY,		"IndirectY: val = read(read(op8) + read((op8 + 1) & 0xFF) << 8 + Y)")
+
+
+
  //				(ADDK, ADMD, 		cB
-#define ADDRESSING_MODE_INFO \
-        ADDRMODE(IMP, Implicit, 	1) \
-        ADDRMODE(IMM, Immediate, 	2) \
-        ADDRMODE(REL, Relative, 	2) \
-        ADDRMODE(ACC, Accumulator,	1) \
-		ADDRMODE(ABS, Absolute,		3) \
-		ADDRMODE(AXR, AbsoluteX,	3) \
-		ADDRMODE(AYR, AbsoluteY,	3) \
-		ADDRMODE(AXW, AbsoluteX,	3) \
-		ADDRMODE(AYW, AbsoluteY,	3) \
-        ADDRMODE(ZPG, ZeroPage,		2) \
-        ADDRMODE(ZPX, ZeroPageX,	2) \
-        ADDRMODE(ZPY, ZeroPageY,	2) \
-		ADDRMODE(IND, Indirect,		3) \
-		ADDRMODE(IXR, IndirectX,	2) \
-		ADDRMODE(IYR, IndirectY,	2) \
-		ADDRMODE(IXW, IndirectX,	2) \
-		ADDRMODE(IYW, IndirectY,	2)
+#define ADDRESS_MODE_RW_INFO \
+        INFO(IMP, Implicit, 	1) \
+        INFO(IMM, Immediate, 	2) \
+        INFO(REL, Relative, 	2) \
+        INFO(ACC, Accumulator,	1) \
+		INFO(ABS, Absolute,		3) \
+		INFO(AXR, AbsoluteX,	3) \
+		INFO(AYR, AbsoluteY,	3) \
+		INFO(AXW, AbsoluteX,	3) \
+		INFO(AYW, AbsoluteY,	3) \
+        INFO(ZPG, ZeroPage,		2) \
+        INFO(ZPX, ZeroPageX,	2) \
+        INFO(ZPY, ZeroPageY,	2) \
+		INFO(IND, Indirect,		3) \
+		INFO(IXR, IndirectX,	2) \
+		INFO(IYR, IndirectY,	2) \
+		INFO(IXW, IndirectX,	2) \
+		INFO(IYW, IndirectY,	2)
+
 
 
 //				(Opcode, Hint)

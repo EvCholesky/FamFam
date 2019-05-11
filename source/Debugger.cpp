@@ -147,9 +147,9 @@ void UpdateDisassemblyWindow(Famicom * pFam, bool * pFShowDisasm)
 			aB[0] = U8ReadAddress(pFam, addr);
 			auto pOpinfo = POpinfoFromOpcode(aB[0]); 
 			auto pOpkinfo = POpkinfoFromOPK(pOpinfo->m_opk);
-			auto pAmodinfo = PAmodinfoFromAmrw(pOpinfo->m_amrw);
+			auto pAmrwinfo = PAmrwinfoFromAmrw(pOpinfo->m_amrw);
 
-			for (int iB=1; iB<pAmodinfo->m_cB; ++iB)
+			for (int iB=1; iB<pAmrwinfo->m_cB; ++iB)
 			{
 				aB[iB] = U8ReadAddress(pFam, addr + iB);
 			}
@@ -160,7 +160,7 @@ void UpdateDisassemblyWindow(Famicom * pFam, bool * pFShowDisasm)
 
 			if (fShowBytes)
 			{
-				switch (pAmodinfo->m_cB)
+				switch (pAmrwinfo->m_cB)
 				{
 					case 1: ImGui::TextColored(colBytes, "%02X        ", aB[0]); break;
 					case 2: ImGui::TextColored(colBytes, "%02X %02X     ",aB[0], aB[1]); break;
@@ -180,18 +180,21 @@ void UpdateDisassemblyWindow(Famicom * pFam, bool * pFShowDisasm)
 		    {
 		        ImGui::BeginTooltip();
 				ImGui::Text("%s: %s", pOpkinfo->m_pChzName, pOpkinfo->m_pChzHint);
+				ImGui::SameLine();
+
+				auto pAmodinfo = PAmodinfoFromAmod(pAmrwinfo->m_amod);
+				ImGui::TextColored(colRed, " %s", pAmodinfo->m_pChzDesc);
 		        ImGui::EndTooltip();
 			}
 			ImGui::SameLine();
 
-
-			switch(pAmodinfo->m_amod)
+			switch(pAmrwinfo->m_amod)
 			{
 				case AMOD_Implicit:														break;
 				case AMOD_Immediate: sprintf(aChOpcode, " #$%02X ", aB[1]);				break;
 				case AMOD_Relative:
 					{
-						u16 addrrel = addr + pAmodinfo->m_cB + s8(aB[1]);
+						u16 addrrel = addr + pAmrwinfo->m_cB + s8(aB[1]);
 						sprintf(aChOpcode, " $%04x ", addrrel);
 					}break;
 				case AMOD_Accumulator:		break;
@@ -207,7 +210,6 @@ void UpdateDisassemblyWindow(Famicom * pFam, bool * pFShowDisasm)
 				default:
 					FF_ASSERT(false, "unhandled addressing mode.");
 			}
-			//addr += pamodinfo->m_cb;
 
             ImGui::Text("%s", aChOpcode);
 			//ImGui::SameLine();

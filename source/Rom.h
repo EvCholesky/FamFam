@@ -102,7 +102,9 @@ struct Cart
 					,m_pBPrgRom(nullptr)
 					,m_pBChrRom(nullptr)
 					,m_cBPrgRom(0)
+					,m_cBPrgRam(0)
 					,m_cBChrRom(0)
+					,m_cBChrRam(0)
 						{ ; }
 
 	MAPPERK			m_mapperk;
@@ -112,7 +114,9 @@ struct Cart
 	u8 *			m_pBPrgRom;
 	u8 *			m_pBChrRom;
 	int				m_cBPrgRom;
+	int				m_cBPrgRam;
 	int				m_cBChrRom;
+	int				m_cBChrRam;
 
 	//Buffer			m_bufPrgRom;
 	//Buffer			m_bufPrgRam;

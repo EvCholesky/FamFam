@@ -116,10 +116,93 @@ static const u16 kAddrIrq = 0xFFFE;
 static const u16 kAddrReset = 0xFFFC; 
 static const u16 kAddrNmi = 0xFFFA; 
 
-struct SMemory // tag = mem
+static const int kCBIndirect = 1024; // one indirect per kb
+static const int kCBAddressable = 64 * 1024;
+
+#define OLD_MAPPER 0	// just until commited 
+#if OLD_MAPPER
+// Memory is addressed with indirect pages, and the address within the slice is found as follows
+// pBOut = m_aP[addr >> cBitShift] + (addr & m_nMask)
+
+// Each page can be configured to set a different granularity of indirect pointers
+// * One pointer to a 1k block: shift = 0, m_nMask = 0x3F
+// * 128 pointers to 8 byte words: shift = 3, m_nMask = 0x7
+// * 256 pointers to 4 byte words: shift = 2, m_nMask = 0x3
+// * 1024 pointers to 1 byte words: shift = 0, m_nMask = 0x0
+
+struct MemorySlice // tag = memsl
 {
+	int		m_cBitShift;
+	u16		m_nMask;
+	u8 **	m_aPRead;		// array of pointers mapping to memory
+	u8 **	m_aPWrite;		// array of pointers mapping to memory
 };
 
+struct MemoryMap // tag = memmp
+{
+	MemorySlice		m_aMemly[kCBAddressable / kCBIndirect];
+	u8				m_bPrev;	// previously byte read on the bus 
+};
+#endif
+
+enum FMEMSL	// Flags for Memory Slices
+{
+	FMEMSL_InUse		= 0x1,	// this slice is allocated and in use
+	FMEMSL_ReadOnly		= 0x1,
+	FMEMSL_Unmapped		= 0x2,
+};
+
+struct MemorySlice
+{
+	u16			m_addrBase;
+	u16			m_nMaskMirror;
+	u8			m_fmemsl;
+	int			m_cB;
+	u8 *		m_pB;
+};
+
+struct MemoryMap;
+void ClearMemmp(MemoryMap * pMemmp);
+
+struct MemoryMap // tag = memmp
+{
+					MemoryMap();
+					~MemoryMap()
+						{ ClearMemmp(this); }
+
+	MemorySlice		m_aMemsl[256];						// first span is unallocated
+	u8				m_mpAddrISlice[kCBAddressable];		// 
+	u8				m_bPrev;	// last byte read on the bus 
+	int				m_cMemsl;
+};
+
+#if OLD_MAPPER
+void MapMemorySlicesToRam(MemoryMap * pMemmp, u16 addrMin, u16 addrMax);
+void MapMemorySlicesToRom(MemoryMap * pMemmp, u16 addrMin, u8 * pBRom, int cBRom);
+void MapMirroredMemorySlices(MemoryMap* pMemmp, u16 addSrc, int cB, u16 addrMirrorMin, u16 addrMirrorMax);
+void UnmapMemorySlices(MemoryMap * pMemmp, u16 addrMin, u8 * pBRom, int cBRom);
+#else
+MemorySlice * PMemslMapRam(MemoryMap * pMemmp, u32 addrMin, u32 addrMax);
+MemorySlice * PMemslMapRom(MemoryMap * pMemmp, u32 addrMin, u32 addrMax);
+MemorySlice * PMemslConfigureUnmapped(MemoryMap * pMemmp, u32 addrMin, u32 addrMax);
+void MapMirrored(MemoryMap * pMemmp, MemorySlice * pMemsl, u32 addrMin, u32 addrMax);
+#endif
+
+void TestMemoryMap(MemoryMap * pMemmp);
+u8 U8MemRead(MemoryMap * pMemmp, u16 addr);
+void U8MemWrite(MemoryMap * pMemmp, u16 addr, u8 b);
+
+inline u16 U16MemRead(MemoryMap * pMemmp, u16 addr)
+{
+	u16 n = U8MemRead(pMemmp, addr) | (u16(U8MemRead(pMemmp, addr+1)) << 8);
+	return n;
+}
+
+inline void MemWriteU16(MemoryMap * pMemmp, u16 addr, u16 n)
+{
+	U8MemWrite(pMemmp, addr, u8(n));
+	U8MemWrite(pMemmp, addr+1, u8(n >> 8));
+}
 
 enum MODELK
 {
@@ -149,42 +232,41 @@ struct Famicom // tag = fam
 
 
 
+#define INFO(AM, DESC) AMOD_##AM,
 enum AMOD // Addressing  MODe
 {
-	AMOD_Implicit, 		// No destination operand, the result is implicit
-	AMOD_Immediate, 	// Uses the 8-bit operand itself as the value for the operation, rather than fetching a value from a memory address.
-	AMOD_Relative, 		// Branch instructions (e.g. BEQ, BCS) have a relative addressing mode that specifies an 8-bit signed offset relative to the current PC.
-	AMOD_Accumulator,	// 
-	AMOD_Absolute,		//
-	AMOD_AbsoluteX,		// val = READ(arg + X)
-	AMOD_AbsoluteY,		// val = READ(arg + Y)
-	AMOD_ZeroPage,		// val = Read((arg) & 0xFF)
-	AMOD_ZeroPageX,		// val = READ((arg + X) & 0xFF) 
-	AMOD_ZeroPageY,		// val = READ((arg + Y) & 0xFF) 
-	AMOD_Indirect,		// val = READ(arg16)
-	AMOD_IndirectX,		// val = READ(READ((arg + X) & 0xFF) + READ((arg + X + 1) & 0xFF) << 8)
-	AMOD_IndirectY,		// val = READ(READ(arg) + READ((arg + 1) & 0xFF) << 8 + Y)
+	ADDRESS_MODE_INFO
+	AMOD_Max,
+	AMOD_Min = 0,
+	AMOD_Nil = -1,
 };
+#undef INFO
 
-
-#define ADDRMODE(NAME, MODE, CB) AMRW_##NAME,
+#define INFO(NAME, MODE, CB) AMRW_##NAME,
 enum AMRW	// Addressing Mode with Read/Write
 {
-	ADDRESSING_MODE_INFO
+	ADDRESS_MODE_RW_INFO
 	AMRW_Max,
 	AMRW_Min = 0,
 	AMRW_Nil = -1,
 };
-#undef ADDRMODE
+#undef INFO
 
 struct AddrModeInfo // tag = amodinfo
+{
+	AMOD			m_amod;
+	const char *	m_pChzDesc;
+};
+
+struct AddrModeRwInfo // tag = amrwinfo
 {
 	AMRW		m_amrw;
 	AMOD		m_amod;
 	int			m_cB;
 };
 
-const AddrModeInfo * PAmodinfoFromAmrw(AMRW amrw);
+const AddrModeInfo * PAmodinfoFromAmod(AMOD amod);
+const AddrModeRwInfo * PAmrwinfoFromAmrw(AMRW amrw);
 
 enum OPCAT
 {
