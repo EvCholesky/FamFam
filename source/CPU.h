@@ -75,43 +75,6 @@ enum MAPPERK
 	MAPPERK_Nil = -1,
 };
 
-struct IMapper // tag = mapr
-{
-	//virtual void OnEnable();
-};
-
-struct SMapperNrom : public IMapper // tag = mapr0
-{
-};
-
-struct SMapperMMC1 : public IMapper // tag = mapr1
-{
-};
-
-enum FMEM : u8
-{
-	FMEM_Mapped			= 0x1,
-	FMEM_NotifyPPU		= 0x2,
-	FMEM_BreakOnRead	= 0x4,
-	FMEM_BreakOnWrite	= 0x8,
-};
-
-// remapping and flags for every mapped byte
-// could be spans?
-union SMemoryData // memd
-{
-	u64			m_nBits;
-	struct 
-	{
-		u16		m_nBase;;
-		u16		m_iMemcb;
-		u8		m_redirectMask;
-		FMEM	m_fmem;
-	};
-};
-
-IMapper * PMapperFromMapperk(MAPPERK mapperk);
-
 static const u16 kAddrIrq = 0xFFFE; 
 static const u16 kAddrReset = 0xFFFC; 
 static const u16 kAddrNmi = 0xFFFA; 
@@ -119,50 +82,22 @@ static const u16 kAddrNmi = 0xFFFA;
 static const int kCBIndirect = 1024; // one indirect per kb
 static const int kCBAddressable = 64 * 1024;
 
-#define OLD_MAPPER 0	// just until commited 
-#if OLD_MAPPER
-// Memory is addressed with indirect pages, and the address within the slice is found as follows
-// pBOut = m_aP[addr >> cBitShift] + (addr & m_nMask)
-
-// Each page can be configured to set a different granularity of indirect pointers
-// * One pointer to a 1k block: shift = 0, m_nMask = 0x3F
-// * 128 pointers to 8 byte words: shift = 3, m_nMask = 0x7
-// * 256 pointers to 4 byte words: shift = 2, m_nMask = 0x3
-// * 1024 pointers to 1 byte words: shift = 0, m_nMask = 0x0
-
-struct MemorySlice // tag = memsl
-{
-	int		m_cBitShift;
-	u16		m_nMask;
-	u8 **	m_aPRead;		// array of pointers mapping to memory
-	u8 **	m_aPWrite;		// array of pointers mapping to memory
-};
-
-struct MemoryMap // tag = memmp
-{
-	MemorySlice		m_aMemly[kCBAddressable / kCBIndirect];
-	u8				m_bPrev;	// previously byte read on the bus 
-};
-#endif
-
-enum FMEMSL	// Flags for Memory Slices
-{
-	FMEMSL_InUse		= 0x1,	// this slice is allocated and in use
-	FMEMSL_ReadOnly		= 0x1,
-	FMEMSL_Unmapped		= 0x2,
-};
-
-struct MemorySlice
-{
-	u16			m_addrBase;
-	u16			m_nMaskMirror;
-	u8			m_fmemsl;
-	int			m_cB;
-	u8 *		m_pB;
-};
-
 struct MemoryMap;
 void ClearMemmp(MemoryMap * pMemmp);
+
+enum FMEM : u8
+{
+	FMEM_None			= 0x0,
+	FMEM_Mapped			= 0x1,
+	FMEM_ReadOnly		= 0x2,
+	FMEM_BreakOnRead	= 0x4,
+	FMEM_BreakOnWrite	= 0x8,
+};
+struct AddressSpan // tab = addrsp
+{
+	u16		m_addrMin;
+	u16		m_addrMax;
+};
 
 struct MemoryMap // tag = memmp
 {
@@ -170,38 +105,43 @@ struct MemoryMap // tag = memmp
 					~MemoryMap()
 						{ ClearMemmp(this); }
 
-	MemorySlice		m_aMemsl[256];						// first span is unallocated
-	u8				m_mpAddrISlice[kCBAddressable];		// 
-	u8				m_bPrev;	// last byte read on the bus 
-	int				m_cMemsl;
+	u8 				m_pBRaw[kCBAddressable];				// 64k of raw memory
+	u8 *			m_mpAddrPB[kCBAddressable];
+	FMEM 			m_mpAddrFmem[kCBAddressable];
+	u8				m_bPrevBus;
 };
 
-#if OLD_MAPPER
-void MapMemorySlicesToRam(MemoryMap * pMemmp, u16 addrMin, u16 addrMax);
-void MapMemorySlicesToRom(MemoryMap * pMemmp, u16 addrMin, u8 * pBRom, int cBRom);
-void MapMirroredMemorySlices(MemoryMap* pMemmp, u16 addSrc, int cB, u16 addrMirrorMin, u16 addrMirrorMax);
-void UnmapMemorySlices(MemoryMap * pMemmp, u16 addrMin, u8 * pBRom, int cBRom);
-#else
-MemorySlice * PMemslMapRam(MemoryMap * pMemmp, u32 addrMin, u32 addrMax);
-MemorySlice * PMemslMapRom(MemoryMap * pMemmp, u32 addrMin, u32 addrMax);
-MemorySlice * PMemslConfigureUnmapped(MemoryMap * pMemmp, u32 addrMin, u32 addrMax);
-void MapMirrored(MemoryMap * pMemmp, MemorySlice * pMemsl, u32 addrMin, u32 addrMax);
-#endif
+AddressSpan AddrspMapMemory(MemoryMap * pMemmp, u32 addrMin, u32 addrMax, u8 fmem = FMEM_None);
+AddressSpan AddrspMarkUnmapped(MemoryMap * pMemmp, u32 addrMin, u32 addrMax);
+void MapMirrored(MemoryMap * pMemmp, AddressSpan addrspBase, u32 addrMin, u32 addrMax, u8 fmem = FMEM_None);
 
 void TestMemoryMap(MemoryMap * pMemmp);
-u8 U8MemRead(MemoryMap * pMemmp, u16 addr);
-void U8MemWrite(MemoryMap * pMemmp, u16 addr, u8 b);
+void VerifyPrgRom(MemoryMap * pMemmp, u8 * pBPrgRom, u32 addrMin, u32 addrMax);
 
-inline u16 U16MemRead(MemoryMap * pMemmp, u16 addr)
+u8 U8PeekMem(MemoryMap * pMemmp, u16 addr); // return an address value without the machine emulating a memory read
+u8 U8ReadMem(MemoryMap * pMemmp, u16 addr);
+u16 U16ReadMem(MemoryMap * pMemmp, u16 addr);
+
+void WriteMemU8(MemoryMap * pMemmp, u16 addr, u8 b);
+void WriteMemU16(MemoryMap * pMemmp, u16 addr, u16 n);
+
+inline u8 U8ReadMem(MemoryMap * pMemmp, u16 addr)
 {
-	u16 n = U8MemRead(pMemmp, addr) | (u16(U8MemRead(pMemmp, addr+1)) << 8);
+	u8 b = U8PeekMem(pMemmp, addr);
+	pMemmp->m_bPrevBus = b;
+	return b;
+}
+
+inline u16 U16ReadMem(MemoryMap * pMemmp, u16 addr)
+{
+	u16 n = U8ReadMem(pMemmp, addr) | (u16(U8ReadMem(pMemmp, addr+1)) << 8);
 	return n;
 }
 
-inline void MemWriteU16(MemoryMap * pMemmp, u16 addr, u16 n)
+inline void WriteMemU16(MemoryMap * pMemmp, u16 addr, u16 n)
 {
-	U8MemWrite(pMemmp, addr, u8(n));
-	U8MemWrite(pMemmp, addr+1, u8(n >> 8));
+	WriteMemU8(pMemmp, addr, u8(n));
+	WriteMemU8(pMemmp, addr+1, u8(n >> 8));
 }
 
 enum MODELK
@@ -220,14 +160,13 @@ struct Famicom // tag = fam
 				:m_pCpu(nullptr)
 				,m_pPpu(nullptr)
 				,m_pModel(nullptr)
-				,m_pMapper(nullptr)
 					{ ; }
 
 	Cpu * 		m_pCpu;
 	Ppu * 		m_pPpu;
 	Model * 	m_pModel;
 	Cart *		m_pCart;
-	IMapper *	m_pMapper;
+	MemoryMap 	m_memmp;
 };
 
 
@@ -327,5 +266,3 @@ void DumpAsm(Famicom * pFam, u16 addrMin, int cB);
 void SetPowerUpState(Famicom * pFam);
 void SetResetState(Famicom * pFam);
 
-u8 U8ReadAddress(Famicom * pFam, u16 addr);
-u16 U16ReadAddress(Famicom * pFam, u16 addr);

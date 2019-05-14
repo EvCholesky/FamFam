@@ -137,6 +137,7 @@ void UpdateDisassemblyWindow(Famicom * pFam, bool * pFShowDisasm)
 	static ImVec4 colBytes(0.5f, 0.5f, 0.8f, 1.0f);
 
     ImGui::Columns(3, "mycolumns3", false);  // 3-ways, no border
+	auto pMemmp = &pFam->m_memmp;
     while (clipper.Step())
 	{
         for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; i++)
@@ -144,14 +145,14 @@ void UpdateDisassemblyWindow(Famicom * pFam, bool * pFShowDisasm)
 			u16 addr = pCart->m_aryAddrInstruct[i];
 
 			u8 aB[3];
-			aB[0] = U8ReadAddress(pFam, addr);
+			aB[0] = U8PeekMem(pMemmp, addr);
 			auto pOpinfo = POpinfoFromOpcode(aB[0]); 
 			auto pOpkinfo = POpkinfoFromOPK(pOpinfo->m_opk);
 			auto pAmrwinfo = PAmrwinfoFromAmrw(pOpinfo->m_amrw);
 
 			for (int iB=1; iB<pAmrwinfo->m_cB; ++iB)
 			{
-				aB[iB] = U8ReadAddress(pFam, addr + iB);
+				aB[iB] = U8PeekMem(pMemmp, addr + iB);
 			}
 
             ImGui::TextColored(colAddr, "$%04X", addr);
@@ -190,23 +191,23 @@ void UpdateDisassemblyWindow(Famicom * pFam, bool * pFShowDisasm)
 
 			switch(pAmrwinfo->m_amod)
 			{
-				case AMOD_Implicit:														break;
-				case AMOD_Immediate: sprintf(aChOpcode, " #$%02X ", aB[1]);				break;
+				case AMOD_Implicit:																				break;
+				case AMOD_Immediate: sprintf_s(aChOpcode, FF_DIM(aChOpcode), " #$%02X ", aB[1]);				break;
 				case AMOD_Relative:
 					{
 						u16 addrrel = addr + pAmrwinfo->m_cB + s8(aB[1]);
-						sprintf(aChOpcode, " $%04x ", addrrel);
+						sprintf_s(aChOpcode, FF_DIM(aChOpcode), " $%04x ", addrrel);
 					}break;
 				case AMOD_Accumulator:		break;
-				case AMOD_Absolute: sprintf(aChOpcode, " $%02x%02x ", aB[2], aB[1]);	break;
-				case AMOD_AbsoluteX: sprintf(aChOpcode, " $%02x%02x,x ", aB[2], aB[1]);	break;
-				case AMOD_AbsoluteY: sprintf(aChOpcode, " $%02x%02x,y ", aB[2], aB[1]);	break;
-				case AMOD_ZeroPage: sprintf(aChOpcode, " $00%02x ", aB[1]);				break;
-				case AMOD_ZeroPageX: sprintf(aChOpcode, " $%02x,x ", aB[1]);			break;
-				case AMOD_ZeroPageY: sprintf(aChOpcode, " $%02x,y ", aB[1]);			break;
-				case AMOD_Indirect: sprintf(aChOpcode, " ($%02x%02x) ", aB[2], aB[1]);	break;
-				case AMOD_IndirectX: sprintf(aChOpcode, " ($%02x,x) ", aB[1]);			break;
-				case AMOD_IndirectY: sprintf(aChOpcode, " ($%02x),y ", aB[1]);			break;
+				case AMOD_Absolute: sprintf_s(aChOpcode, FF_DIM(aChOpcode), " $%02x%02x ", aB[2], aB[1]);		break;
+				case AMOD_AbsoluteX: sprintf_s(aChOpcode, FF_DIM(aChOpcode), " $%02x%02x,x ", aB[2], aB[1]);	break;
+				case AMOD_AbsoluteY: sprintf_s(aChOpcode, FF_DIM(aChOpcode), " $%02x%02x,y ", aB[2], aB[1]);	break;
+				case AMOD_ZeroPage: sprintf_s(aChOpcode, FF_DIM(aChOpcode), " $00%02x ", aB[1]);				break;
+				case AMOD_ZeroPageX: sprintf_s(aChOpcode, FF_DIM(aChOpcode), " $%02x,x ", aB[1]);				break;
+				case AMOD_ZeroPageY: sprintf_s(aChOpcode, FF_DIM(aChOpcode), " $%02x,y ", aB[1]);				break;
+				case AMOD_Indirect: sprintf_s(aChOpcode, FF_DIM(aChOpcode), " ($%02x%02x) ", aB[2], aB[1]);		break;
+				case AMOD_IndirectX: sprintf_s(aChOpcode, FF_DIM(aChOpcode), " ($%02x,x) ", aB[1]);				break;
+				case AMOD_IndirectY: sprintf_s(aChOpcode, FF_DIM(aChOpcode), " ($%02x),y ", aB[1]);				break;
 				default:
 					FF_ASSERT(false, "unhandled addressing mode.");
 			}

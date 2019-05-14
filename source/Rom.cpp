@@ -4,7 +4,137 @@
 #include <stdio.h>
 #include <stdlib.h>         // NULL, malloc
 
-bool FTryLoadRomFromFile(const char * pChzFilename, Cart * pCart)
+int CPageRom(int nMSB, int nLSB)
+{
+	int n = (nMSB << 8) | nLSB;
+
+	// if the most significant nibble is 0xF  use an exponent multiplier 
+	if ((n & 0xF00) == 0xF00)
+	{
+		int mult = (n & 0x3) * 2 + 1;
+		int exp = (n & 0xF6) >> 2;
+		return (0x1 << exp) * mult;
+	}
+
+	return n;
+}
+
+void AppendAddrOffset(DynAry<u16> * pAryAddrInstruct, u16 addrBase, u8 * pBPrg, int cB)
+{
+	FF_ASSERT(pAryAddrInstruct->FIsEmpty() || pAryAddrInstruct->Last() < addrBase, "instructions added out of order");
+
+	int dB = 0;
+	while (dB < cB)
+	{
+		u8 bOpcode = pBPrg[dB];
+		auto pOpinfo = POpinfoFromOpcode(bOpcode); 
+		auto pOpkinfo = POpkinfoFromOPK(pOpinfo->m_opk);
+		auto pAmrwinfo = PAmrwinfoFromAmrw(pOpinfo->m_amrw);
+
+		pAryAddrInstruct->Append(dB + addrBase);
+		dB += pAmrwinfo->m_cB;
+	}
+}
+
+void MapMemoryCommon(MemoryMap * pMemmp)
+{
+	auto addrspBottom = AddrspMapMemory(pMemmp, 0x0, 0x800);		// bottom 2K
+	MapMirrored(pMemmp, addrspBottom, 0x800, 0x2000);				// mirrors to 8K
+
+	auto addrspPpuReg = AddrspMapMemory(pMemmp, 0x2000, 0x2008);	// PPU registers
+	MapMirrored(pMemmp, addrspPpuReg, 0x2008, 0x4000);				// mirrors to 16k
+
+	auto addrspApuIoReg = AddrspMapMemory(pMemmp, 0x4000, 0x4018);	// APU and IO Registers
+	(void)AddrspMarkUnmapped(pMemmp, 0x4018, 0x4020);				// unused APU and IO test space
+}
+
+bool FTrySetupMapperNrom(MemoryMap* pMemmp, Cart* pCart)
+{
+	MapMemoryCommon(pMemmp);
+	(void)AddrspMarkUnmapped(pMemmp, 0x4020, 0x8000);
+	
+	switch (pCart->m_cBPrgRom)
+	{
+	case FF_KIB(16):
+		{
+			auto addrspPrg = AddrspMapMemory(pMemmp, 0x8000, 0xC000, FMEM_ReadOnly);
+			MapMirrored(pMemmp, addrspPrg, 0xC000, 0x10000);
+			CopyAB(pCart->m_pBPrgRom, &pMemmp->m_pBRaw[0x8000], FF_KIB(16));
+
+			AppendAddrOffset(&pCart->m_aryAddrInstruct, 0x8000, pCart->m_pBPrgRom, pCart->m_cBPrgRom);
+			AppendAddrOffset(&pCart->m_aryAddrInstruct, 0xC000, pCart->m_pBPrgRom, pCart->m_cBPrgRom);
+
+			VerifyPrgRom(pMemmp, pCart->m_pBPrgRom, 0x8000, 0xC000);
+			VerifyPrgRom(pMemmp, pCart->m_pBPrgRom, 0x8000, 0xC000);
+		}break;
+	case FF_KIB(32):
+		{
+			(void)AddrspMapMemory(pMemmp, 0x8000, 0x10000, FMEM_ReadOnly);
+			CopyAB(pCart->m_pBPrgRom, &pMemmp->m_pBRaw[0x8000], FF_KIB(32));
+
+			AppendAddrOffset(&pCart->m_aryAddrInstruct, 0x8000, pCart->m_pBPrgRom, pCart->m_cBPrgRom);
+
+			VerifyPrgRom(pMemmp, pCart->m_pBPrgRom, 0x8000, 0x10000);
+		} break;
+
+	default:
+		ShowError("unexpected PRG rom size %d bytes", pCart->m_cBPrgRom);
+		return false;
+	}
+
+	TestMemoryMap(pMemmp);
+	return true;
+}
+
+bool FTrySetupMapperMmc1(MemoryMap* pMemmp, Cart* pCart)
+{
+	MapMemoryCommon(pMemmp);
+	u32 addrUnmappedMax = 0x8000;
+	if (pCart->m_cBPrgRam)
+	{
+		if (pCart->m_cBPrgRam != FF_KIB(8))
+		{
+			ShowError("Unexpected PRG ram size '%d' bytes", pCart->m_cBPrgRam);
+			return false;
+		}
+
+		addrUnmappedMax = 0x6000;
+		(void) AddrspMapMemory(pMemmp, 0x6000, FF_KIB(8));
+	}
+
+	(void)AddrspMarkUnmapped(pMemmp, 0x4020, addrUnmappedMax);
+
+	// * Some tests have found (citation needed) that the power on behavior has the last 32k
+	// mapped at 0x8000..0xFFFF
+
+	auto addrspPrg0 = AddrspMapMemory(pMemmp, 0x6000, FF_KIB(8), FMEM_ReadOnly);
+	auto addrspPrg1 = AddrspMapMemory(pMemmp, 0x6000, FF_KIB(8), FMEM_ReadOnly);
+	TestMemoryMap(pMemmp);
+	return true;
+}
+
+bool FTrySetupMapperUxRom(MemoryMap* pMemmp, Cart* pCart)
+{
+	MapMemoryCommon(pMemmp);
+	FF_ASSERT(false, "TBD");
+
+	return false;
+}
+
+bool FTrySetupMemoryMapper(MemoryMap * pMemmp, Cart * pCart)
+{
+	switch(pCart->m_mapperk)
+	{
+	case MAPPERK_NROM:	return FTrySetupMapperNrom(pMemmp, pCart);
+	case MAPPERK_MMC1:	return FTrySetupMapperMmc1(pMemmp, pCart);
+	case MAPPERK_UxROM:	return FTrySetupMapperUxRom(pMemmp, pCart);
+	default:
+		ShowError("Unknown mapper type");
+		return false;
+	}
+}
+
+bool FTryLoadRomFromFile(const char * pChzFilename, Cart * pCart, MemoryMap * pMemmp)
 {
 	FILE * pFile = nullptr;
 	FF_FOPEN(pFile, pChzFilename, "rb");
@@ -42,144 +172,10 @@ bool FTryLoadRomFromFile(const char * pChzFilename, Cart * pCart)
     }
 
    fclose(pFile);
-   return FTryLoadRom(pB, cB, pCart);
+   return FTryLoadRom(pB, cB, pCart, pMemmp);
 }
 
-int CPageRom(int nMSB, int nLSB)
-{
-	int n = (nMSB << 8) | nLSB;
-
-	// if the most significant nibble is 0xF  use an exponent multiplier 
-	if ((n & 0xF00) == 0xF00)
-	{
-		int mult = (n & 0x3) * 2 + 1;
-		int exp = (n & 0xF6) >> 2;
-		return (0x1 << exp) * mult;
-	}
-
-	return n;
-}
-
-void AppendAddrOffset(DynAry<u16> * pAryAddrInstruct, u16 addrBase, u8 * pBPrg, int cB)
-{
-	FF_ASSERT(pAryAddrInstruct->FIsEmpty() || pAryAddrInstruct->Last() < addrBase, "instructions added out of order");
-
-	int dB = 0;
-	while (dB < cB)
-	{
-		u8 bOpcode = pBPrg[dB];
-		auto pOpinfo = POpinfoFromOpcode(bOpcode); 
-		auto pOpkinfo = POpkinfoFromOPK(pOpinfo->m_opk);
-		auto pAmrwinfo = PAmrwinfoFromAmrw(pOpinfo->m_amrw);
-
-		pAryAddrInstruct->Append(dB + addrBase);
-		dB += pAmrwinfo->m_cB;
-	}
-}
-
-//void MapMemorySlicesToRam(MemoryMap * pMemmp, u16 addrMin, u16 addrMax)
-//void MapMemorySlicesToRom(MemoryMap * pMemmp, u16 addrMin, u8 * pBRom, int cBRom)
-//void MapMirroredMemorySlices(MemoryMap * pMemmp, u16 addSrc, int cB, u16 addrMirrorMin, u16 addrMirrorMax)
-//void UnmapMemorySlices(MemoryMap * pMemmp, u16 addrMin, u8 * pBRom, int cBRom)
-
-void MapMemoryCommon(MemoryMap * pMemmp)
-{
-	/*
-	MapMemorySlicesToRam(pMemmp, 0x0, 0x800);					// bottom 2K
-	MapMirroredMemorySlices(pMemmp, 0, 0x800, 0x800, 0x2000);	// mirrors to 8K
-
-	MapMemorySlicesToRam(pMemmp, 0x2000, 0x8);	// PPU registers
-	MapMirroredMemorySlices(pMemmp, 0x2000, 0x8, 0x2008, 0x4000);	// mirrors to 16k
-
-	MapMemorySlicesToRam(pMemmp, 0x4000, 0x18);						// APU and IO Registers
-	MapMirroredMemorySlices(pMemmp, 0x4000, 0x18, 0x4018, 0x401F);	//
-	*/
-
-	auto pMemslBase = PMemslMapRam(pMemmp, 0x0, 0x800);				// bottom 2K
-	MapMirrored(pMemmp, pMemslBase, 0x800, 0x2000);					// mirrors to 8K
-
-	auto pMemslPpuReg = PMemslMapRam(pMemmp, 0x2000, 0x8);			// PPU registers
-	MapMirrored(pMemmp, pMemslPpuReg, 0x2008, 0x4000);				// mirrors to 16k
-
-	auto pMemslApuReg = PMemslMapRam(pMemmp, 0x4000, 0x18);			// APU and IO Registers
-	(void)PMemslConfigureUnmapped(pMemmp, 0x4018, 0x4020);			// unused APU and IO test space
-	//MapMirrored(pMemmp, pMemslApuReg, 0x4018, 0x401F);
-}
-
-bool FTrySetupMapperNrom(MemoryMap* pMemmp, Cart* pCart)
-{
-	MapMemoryCommon(pMemmp);
-	(void)PMemslConfigureUnmapped(pMemmp, 0x4020, 0x8000);
-	
-	switch (pCart->m_cBPrgRom)
-	{
-	case FF_KIB(16):
-		{
-			auto pMemslPrg = PMemslMapRom(pMemmp, 0x8000, FF_KIB(16));
-			MapMirrored(pMemmp, pMemslPrg, 0xC000, 0x10000);
-		}break;
-	case FF_KIB(32):
-		(void)PMemslMapRom(pMemmp, 0x8000, FF_KIB(32));
-		break;
-
-	default:
-		ShowError("unexpected PRG rom size %d bytes", pCart->m_cBPrgRom);
-		return false;
-	}
-
-	TestMemoryMap(pMemmp);
-	return true;
-}
-
-bool FTrySetupMapperMmc1(MemoryMap* pMemmp, Cart* pCart)
-{
-	MapMemoryCommon(pMemmp);
-	u32 addrUnmappedMax = 0x8000;
-	if (pCart->m_cBPrgRam)
-	{
-		if (pCart->m_cBPrgRam != FF_KIB(8))
-		{
-			ShowError("Unexpected PRG ram size '%d' bytes", pCart->m_cBPrgRam);
-			return false;
-		}
-
-		addrUnmappedMax = 0x6000;
-		auto pMemslPrgRam = PMemslMapRam(pMemmp, 0x6000, FF_KIB(8));
-	}
-
-	(void)PMemslConfigureUnmapped(pMemmp, 0x4020, addrUnmappedMax);
-
-	// * Some tests have found (citation needed) that the power on behavior has the last 32k
-	// mapped at 0x8000..0xFFFF
-
-	auto pMemslPrg0 = PMemslMapRom(pMemmp, 0x6000, FF_KIB(8));
-	auto pMemslPrg1 = PMemslMapRom(pMemmp, 0x6000, FF_KIB(8));
-	TestMemoryMap(pMemmp);
-	return true;
-}
-
-bool FTrySetupMapperUxrRom(MemoryMap* pMemmp, Cart* pCart)
-{
-	MapMemoryCommon(pMemmp);
-	FF_ASSERT(false, "TBD");
-
-	return false;
-}
-
-bool FTrySetupMemoryMapper(MemoryMap * pMemmp, Cart * pCart)
-{
-	switch(pCart->m_mapperk)
-	{
-	case MAPPERK_NROM:	return FTrySetupMapperNrom(pMemmp, pCart);
-	case MAPPERK_MMC1:	return FTrySetupMapperMmc1(pMemmp, pCart);
-	case MAPPERK_UxROM:	return FTrySetupMapperUxRom(pMemmp, pCart);
-	default:
-		ShowError("Unknown mapper type");
-		return false;
-	}
-}
-
-bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart)
+bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart, MemoryMap * pMemmp)
 {
 	RomHeader * pHead = (RomHeader *)pB;
 
@@ -220,10 +216,14 @@ bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart)
 
 	// PRG rom data
 	pCart->m_pBPrgRom = pBTrainer + cBTrainer;
-	AppendAddrOffset(&pCart->m_aryAddrInstruct, 0xC000, pCart->m_pBPrgRom, pCart->m_cBPrgRom);
 
 	// Chr rom data
 	pCart->m_pBChrRom = pCart->m_pBPrgRom + pCart->m_cBPrgRom;
+
+	if (!FTrySetupMemoryMapper(pMemmp, pCart))
+	{
+		return false;
+	}
 
 	printf("RomLoaded: PRG %d KiB,  CHR %d KiB\n", pCart->m_cBPrgRom / 1024, pCart->m_cBChrRom / 1024);
 	return true;

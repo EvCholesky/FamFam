@@ -2,6 +2,7 @@
 
 #include <cstdlib> 
 #include <stdio.h>
+#include <string.h>
 
 Famicom g_fam;
 
@@ -77,206 +78,204 @@ const OpInfo * POpinfoFromOpcode(u8 nOpcode)
 	return &s_mpOpcodeOpinfo[nOpcode];
 }
 
-IMapper * PMapperFromMapperk(MAPPERK mapperk)
+u8 U8PeekMem(MemoryMap * pMemmp, u16 addr)
 {
-	return nullptr;
-}
+	u8 * pB = pMemmp->m_mpAddrPB[addr];
 
-u8 U8MemRead(MemoryMap * pMemmp, u16 addr)
-{
-#if OLD_MAPPER
-	MemorySlice * pMemsl = &pMemmp->m_aMemly[addr >> 10];
-	u16 addrSlice = addr & 0x3FF;
-	u8 * pB = pMemsl->m_aPRead[addrSlice >> pMemsl->m_cBitShift];
-
-	// if memory isn't mapped at this location return the last thing on the bus 
-	if (!pB)
-		return pMemmp->m_bPrev;
-
-	u8 b = *(pB + (addrSlice & pMemsl->m_nMask));
-	pMemmp->m_bPrev = b;
+	u8 b = *pB; 
 	return b;
-#else
-	auto iMemsl = pMemmp->m_mpAddrISlice[addr];
-	auto pMemsl = &pMemmp->m_aMemsl[iMemsl];
-	if ((pMemsl->m_fmemsl & FMEMSL_Unmapped) != 0)
-	{
-		return pMemmp->m_bPrev;
-	}
-
-	u32 dAddr = addr - pMemsl->m_addrBase;
-	dAddr = dAddr & pMemsl->m_nMaskMirror;
-
-	u8 b = pMemsl->m_pB[dAddr];
-	pMemmp->m_bPrev = b;
-	return b;
-#endif
 }
 
-void U8MemWrite(MemoryMap * pMemmp, u16 addr, u8 b)
+void WriteMemU8(MemoryMap * pMemmp, u16 addr, u8 b)
 {
-#if OLD_MAPPER
-	MemorySlice * pMemsl = &pMemmp->m_aMemly[addr >> 10];
-	u16 addrSlice = addr & 0x3FF;
-	u8 * pB = pMemsl->m_aPRead[addrSlice >> pMemsl->m_cBitShift];
+	pMemmp->m_bPrevBus = b;
+	FMEM fmem = pMemmp->m_mpAddrFmem[addr];
 
-	pMemmp->m_bPrev = b;
-
-	// we expect that unmapped memory at this location has been pointed at dummy memory
-	*(pB + (addrSlice & pMemsl->m_nMask)) = b;
-#else
-#endif
+	u8 bDummy;
+	u8 * pB = ((fmem & FMEM_ReadOnly) == 0) ? pMemmp->m_mpAddrPB[addr] : &bDummy;
+	*pB = b;
 }
 
-#if OLD_MAPPER
-void MapMemorySlicesToRam(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
-{
-}
-
-void MapMemorySlicesToRom(MemoryMap * pMemmp, u32 addrMin, u8 * pBRom, int cBRom)
-{
-}
-
-void MapMirroredMemorySlices(MemoryMap * pMemmp, u32 addSrc, int cB, u32 addrMirrorMin, u32 addrMirrorMax)
-{
-}
-
-void UnmapMemorySlices(MemoryMap * pMemmp, u32 addrMin, u8 * pBRom, int cBRom)
-{
-}
-#else
 MemoryMap::MemoryMap()
-:m_bPrev(0)
-,m_cMemsl(1)	// allocate the first memory slice as an invalid slice
+:m_bPrevBus(0)
 {
-	ZeroAB(m_aMemsl, sizeof(m_aMemsl));
-	ZeroAB(m_mpAddrISlice, sizeof(m_mpAddrISlice));
+	ZeroAB(m_pBRaw, sizeof(m_pBRaw));
+	ZeroAB(m_mpAddrPB, sizeof(m_mpAddrPB));
+	ZeroAB(m_mpAddrFmem, sizeof(m_mpAddrFmem));
 }
 
 void ClearMemmp(MemoryMap * pMemmp)
 {
-	MemorySlice * pMemslMax = &pMemmp->m_aMemsl[pMemmp->m_cMemsl];
-	for (MemorySlice * pMemslIt = pMemmp->m_aMemsl; pMemslIt != pMemslMax; ++pMemslIt)
-	{
-		if (pMemslIt->m_pB)
-		{
-			free(pMemslIt->m_pB);
-			ZeroAB(pMemslIt, sizeof(*pMemslIt)); 
-		}
-	}
-
-	ZeroAB(pMemmp->m_mpAddrISlice, sizeof(pMemmp->m_mpAddrISlice));
+	ZeroAB(pMemmp->m_pBRaw, sizeof(pMemmp->m_pBRaw));
+	ZeroAB(pMemmp->m_mpAddrPB, sizeof(pMemmp->m_mpAddrPB));
+	ZeroAB(pMemmp->m_mpAddrFmem, sizeof(pMemmp->m_mpAddrFmem));
 }
-
 
 void VerifyMemorySpanClear(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
 {
 	// make sure this span is not overlapping any other spans
-	MemorySlice * pMemslMax = &pMemmp->m_aMemsl[pMemmp->m_cMemsl];
-	for (auto pMemsl = pMemmp->m_aMemsl; pMemsl != pMemslMax; ++pMemsl)
-	{
-		FF_ASSERT(addrMax < pMemsl->m_addrBase || addrMin >= u32(pMemsl->m_addrBase + pMemsl->m_cB), "detected memory span overlap");
-	}
 
-	addrMax = min(addrMax, FF_DIM(pMemmp->m_mpAddrISlice));
+	addrMax = min<u32>(addrMax, kCBAddressable);
 	for (u32 addrIt = addrMin; addrIt < addrMax; ++addrIt)
 	{
-		FF_ASSERT(pMemmp->m_mpAddrISlice[addrIt] == 0);
+		FF_ASSERT(pMemmp->m_mpAddrPB[addrIt] == nullptr);
+		FF_ASSERT(pMemmp->m_mpAddrFmem[addrIt] == FMEM_None);
+	}
+}
+
+void VerifyRam(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
+{
+	for (u32 addr = addrMin; addr < addrMax; ++addr)
+	{
+		u8 nPrev = U8ReadMem(pMemmp, addr);
+		u8 nTest = ~nPrev;
+		WriteMemU8(pMemmp, addr, nTest);
+		u8 nAfter = U8ReadMem(pMemmp, addr); 
+		FF_ASSERT(nAfter == nTest, "cannot write to memory address $%04x", addr);
+	}
+}
+
+void VerifyPrgRom(MemoryMap * pMemmp, u8 * pBPrgRom, u32 addrMin, u32 addrMax)
+{
+	u32 iB = 0;
+	for (u32 addr = addrMin; addr < addrMax; ++addr, ++iB)
+	{
+		u8 b = U8ReadMem(pMemmp, addr);
+		FF_ASSERT(b == pBPrgRom[iB], "rom map mismatch");	
 	}
 }
 
 void VerifyRom(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
 {
-}
-
-void VerifyMirror(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
-{
-}
-
-MemorySlice * IMemslAllocate(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
-{
-	VerifyMemorySpanClear(pMemmp, addrMin, addrMax);
-	auto iMemsl = pMemmp->m_cMemsl++;	
-
-	addrMax = min(addrMin, FF_DIM(pMemmp->m_mpAddrISlice));
-	for (u32 addrIt = addrMin; addrIt < addrMax; ++addrIt)
+	for (u32 addr = addrMin; addr < addrMax; ++addr)
 	{
-		pMemmp->m_mpAddrISlice[addrIt] = iMemsl;
-	}
-
-	MemorySlice * pMemsl = &pMemmp->m_aMemsl[iMemsl];
-	pMemsl->m_fmemsl |= FMEMSL_InUse;
-	return pMemsl;
-}
-
-MemorySlice * PMemslMapRam(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
-{
-	auto pMemsl = IMemslAllocate(pMemmp, addrMin, addrMax);
-	pMemsl->m_addrBase = addrMin;
-	pMemsl->m_cB = addrMax - addrMin;
-	pMemsl->m_pB = (u8 *)malloc(pMemsl->m_cB);
-	return pMemsl;
-}
-
-MemorySlice * PMemslMapRom(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
-{
-	auto pMemsl = IMemslAllocate(pMemmp, addrMin, addrMax);
-	pMemsl->m_addrBase = addrMin;
-	pMemsl->m_cB = addrMax - addrMin;
-	pMemsl->m_pB = (u8 *)malloc(pMemsl->m_cB);
-	pMemsl->m_fmemsl |= FMEMSL_ReadOnly;
-	return pMemsl;
-}
-
-MemorySlice * PMemslConfigureUnmapped(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
-{
-	auto pMemsl = IMemslAllocate(pMemmp, addrMin, addrMax);
-	pMemsl->m_addrBase = addrMin;
-	pMemsl->m_cB = addrMax - addrMin;
-	pMemsl->m_fmemsl |= FMEMSL_Unmapped;
-	return pMemsl;
-}
-
-void MapMirrored(MemoryMap * pMemmp, MemorySlice * pMemsl, u32 addrMin, u32 addrMax)
-{
-	VerifyMemorySpanClear(pMemmp, addrMin, addrMax);
-
-	u8 iMemsl = U8Coerce(IFromP(pMemmp->m_aMemsl, FF_DIM(pMemmp->m_aMemsl), pMemsl));
-	addrMax = min(addrMin, FF_DIM(pMemmp->m_mpAddrISlice));
-	for (u32 addrIt = addrMin; addrIt < addrMax; ++addrIt)
-	{
-		pMemmp->m_mpAddrISlice[addrIt] = iMemsl;
+		u8 nPrev = U8ReadMem(pMemmp, addr);
+		WriteMemU8(pMemmp, addr, ~nPrev);
+		u8 nAfter = U8ReadMem(pMemmp, addr); 
+		FF_ASSERT(nPrev == nAfter, "Wrote to read-only memory $%04x", addr);
 	}
 }
-#endif
+
+void VerifyMirror(MemoryMap * pMemmp, u32 addrBaseMin, u32 addrBaseMax, u32 addrMirrorMin, u32 addrMirrorMax)
+{
+	u8 b = 1;
+	u32 cBBase = addrBaseMax - addrBaseMin;
+	for (u32 addrIt = addrMirrorMin; addrIt < addrMirrorMax; ++addrIt)
+	{
+		u32 addrBase = addrBaseMin + ((addrIt - addrMirrorMin) % cBBase);
+		u8 nBase = U8ReadMem(pMemmp, addrBase);
+		u8 nMirror = U8ReadMem(pMemmp, addrIt);
+		FF_ASSERT(nBase == nMirror, "mirrored read failed at $%04x", addrIt);
+
+		b++;
+		WriteMemU8(pMemmp, addrIt, b);
+		u8 nBaseWrite = U8ReadMem(pMemmp, addrBase);
+		FF_ASSERT(b == nBaseWrite, "mirrored write failed at $%04x", addrIt);
+
+		b++;
+		WriteMemU8(pMemmp, addrBase, b);
+		u8 nMirrorWrite = U8ReadMem(pMemmp, addrIt);
+		FF_ASSERT(b == nMirrorWrite, "mirrored write failed at $%04x", addrIt);
+	}
+}
+
+AddressSpan AddrspMapMemory(MemoryMap * pMemmp, u32 addrMin, u32 addrMax, u8 fmem)
+{
+	VerifyMemorySpanClear(pMemmp, addrMin, addrMax);
+	FF_ASSERT(addrMax > addrMin, "bad min/max addresses");
+	FF_ASSERT(addrMin <= kCBAddressable && addrMin <= kCBAddressable, "address outside of range");
+
+	fmem |= FMEM_Mapped;
+	static_assert(sizeof(fmem) == 1, "expected one byte flags");
+	memset(&pMemmp->m_mpAddrFmem[addrMin], fmem, addrMax - addrMin);
+
+	u8 ** ppBMax = &pMemmp->m_mpAddrPB[addrMax];
+	u8 * pBRaw = &pMemmp->m_pBRaw[addrMin];
+	for (u8 ** ppB = &pMemmp->m_mpAddrPB[addrMin]; ppB != ppBMax; ++ppB, ++pBRaw)
+	{
+		*ppB = pBRaw;
+	}
+
+	AddressSpan addrsp;
+	addrsp.m_addrMin = addrMin;
+	addrsp.m_addrMax = addrMax;
+	return addrsp;
+}
+
+AddressSpan AddrspMarkUnmapped(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
+{
+	FF_ASSERT(addrMax > addrMin, "bad min/max addresses");
+	FF_ASSERT(addrMin <= kCBAddressable && addrMin <= kCBAddressable, "address outside of range");
+
+	FMEM fmem = FMEM_ReadOnly; // !unmapped
+	static_assert(sizeof(fmem) == 1, "Expected one byte flags");
+	memset(&pMemmp->m_mpAddrFmem[addrMin], fmem, addrMax - addrMin);
+
+	// Unmapped memory maps the pB array at the last value left on the bus 
+	// If we spend too much time setting / clearing this we could check a flag on memory writes, but that seems worse.
+
+	u8 ** ppBMax = &pMemmp->m_mpAddrPB[addrMax];
+	for (u8 ** ppB = &pMemmp->m_mpAddrPB[addrMin]; ppB != ppBMax; ++ppB)
+	{
+		*ppB = &pMemmp->m_bPrevBus;
+	}
+
+	AddressSpan addrsp;
+	addrsp.m_addrMin = addrMin;
+	addrsp.m_addrMax = addrMax;
+	return addrsp;
+}
+
+void MapMirrored(MemoryMap * pMemmp, AddressSpan addrspBase, u32 addrMin, u32 addrMax, u8 fmem)
+{
+	fmem |= FMEM_Mapped;
+	static_assert(sizeof(fmem) == 1, "expected one byte flags");
+	memset(&pMemmp->m_mpAddrFmem[addrMin], fmem, addrMax - addrMin);
+	
+	u32 cBBase = max<u32>(1, addrspBase.m_addrMax - addrspBase.m_addrMin);
+	for (u32 addrIt = addrMin; addrIt < addrMax; ++addrIt)
+	{
+		u32 dAddr = (addrIt - addrMin) % cBBase;
+		pMemmp->m_mpAddrPB[addrIt] = pMemmp->m_mpAddrPB[addrspBase.m_addrMin + dAddr];
+	}
+}
 
 void TestMemoryMap(MemoryMap * pMemmp)
 {
 	// make sure all spans are mapped or unmapped
 	for (u32 addr = 0; addr < kCBAddressable; ++addr)
 	{
-		FF_ASSERT(pMemmp->m_mpAddrISlice[addr] != 0, "unmapped region");
+		u8 fmem = pMemmp->m_mpAddrFmem[addr];
+		FF_ASSERT(fmem != 0, "unhandled region at %04x. unmapped memory regions must be configured.", addr);
+		if ((fmem & FMEM_Mapped) == 0)
+		{
+			FF_ASSERT(pMemmp->m_mpAddrPB[addr] = &pMemmp->m_bPrevBus, "unmapped memory should point at the previous bus value");
+		}
 	}
 
-	VerifyRom(pMemmp, 0x0000, 0x0800);
-	VerifyMirror(pMemmp, 0x0000, 0x0800);
+	VerifyRam(pMemmp, 0x0000, 0x0800);
+	VerifyMirror(pMemmp, 0x0, 0x800, 0x800, 0x2000);
+
+	VerifyRam(pMemmp, 0x2000, 0x2008);
+	VerifyMirror(pMemmp, 0x2000, 0x2008, 0x2008, 0x4000);
 }
 
 void DumpAsm(Famicom * pFam, u16 addrMin, int cB)
 {
+	auto pMemmp = &pFam->m_memmp;
 	u32 addrMax = addrMin + cB;
 	u32 addr = addrMin;
 	while (addr < addrMax)
 	{
 		u8 aB[3];
-		aB[0] = U8ReadAddress(pFam, addr);
+		aB[0] = U8PeekMem(pMemmp, addr);
 		auto pOpinfo = POpinfoFromOpcode(aB[0]); 
 		auto pOpkinfo = POpkinfoFromOPK(pOpinfo->m_opk);
 		auto pAmodinfo = PAmrwinfoFromAmrw(pOpinfo->m_amrw);
 
 		for (int iB=1; iB<pAmodinfo->m_cB; ++iB)
 		{
-			aB[iB] = U8ReadAddress(pFam, addr + iB);
+			aB[iB] = U8PeekMem(pMemmp, addr + iB);
 		}
 		switch (pAmodinfo->m_cB)
 		{

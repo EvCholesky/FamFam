@@ -48,35 +48,7 @@ union RomFlagsEx // tag = romfx
 	};
 };
 
-/*
-union RomPrgChrSize // tag = romsz
-{
-	u8 m_nBits;
-	struct 
-	{
-		u8	m_cBPrg:4;
-		u8	m_cBChr:4;
-	};
-};
 
-union RomPrgChrSize // tag = romsz
-{
-	u8 m_nBits;
-	struct 
-	{
-	};
-};
-struct SRomHeaderInes // tag = headi
-{
-	u32		m_nCookie;			// should be "NES" followed by EOL
-	u8		m_cPagePrgRom;		// number of 16KiB pages of program data
-	u8		m_cBlockChrRom;		// number of 8KiB blocks of 'character' image data
-	u16		m_nFlagsMapper;
-	u8		m_nPrgRam;			// rarely used extension
-	u8		m_nTvSystem;		// rarely used extension
-	u8		m_nTvSystem2;		// rarely used extension
-	u8		m_aNUnused[5];		// unused pad
-};*/
 
 // header for ines/nes2.0 roms
 struct RomHeader	// tag = head
@@ -117,25 +89,10 @@ struct Cart
 	int				m_cBPrgRam;
 	int				m_cBChrRom;
 	int				m_cBChrRam;
-
-	//Buffer			m_bufPrgRom;
-	//Buffer			m_bufPrgRam;
-	//Buffer			m_bufChrRom;
 };
 
-/*
-union MapperEx // tag = fmap
-{
-	u8	m_nBits;
-	struct 
-	{
-		u8 m_nMapperExtended:4;
-		u8 m_other:4;
-	};
-};
-*/
 
 
-bool FTryLoadRomFromFile(const char * pChzFilename, Cart * pCart);
-bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart);
+bool FTryLoadRomFromFile(const char * pChzFilename, Cart * pCart, MemoryMap * pMemmp);
+bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart, MemoryMap * pMemmp);
 void CloseRom(Cart * pCart);
