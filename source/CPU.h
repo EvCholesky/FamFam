@@ -2,6 +2,7 @@
 
 #include "Common.h"
 #include "Opcodes.h"
+#include "PPu.h"
 
 static const int kCBRamPhysical = 2 * 1024; // 0x800
 
@@ -10,27 +11,46 @@ struct Cart;
 
 enum FCPU : u8
 {
-	FCPU_Carry				= 0X1,
-	FCPU_Zero				= 0X2,
-	FCPU_InterruptDisable	= 0X4,
-	FCPU_DecimalMode		= 0X8,
-	FCPU_Break				= 0X10,
-	FCPU_Overflow			= 0X40,
-	FCPU_Negative			= 0X80,
+	FCPU_None				= 0x0,
+	FCPU_Carry				= 0x1,
+	FCPU_Zero				= 0x2,
+	FCPU_InterruptDisable	= 0x4,
+	FCPU_DecimalMode		= 0x8,
+	FCPU_Break				= 0x10,
+	FCPU_Overflow			= 0x40,
+	FCPU_Negative			= 0x80,
+};
+
+struct CpuRegister // tag = creg
+{
+					CpuRegister()
+					:m_a(0)
+					,m_x(0)
+					,m_y(0)
+					,m_p(FCPU_None)
+					,m_sp(0)
+					,m_pc(0)
+						{ ; }
+
+	u8				m_a;
+	u8				m_x;
+	u8				m_y;
+	FCPU			m_p;	// flags 
+	u8				m_sp;	// stack register
+	u16				m_pc;	// program counter
 };
 
 struct Cpu // tag = cpu
 {
-			Cpu();
+					Cpu()
+					:m_cCycleCpu(0)
+						{ ; }
 
-	u8		m_a;
-	u8		m_x;
-	u8		m_y;
-	FCPU	m_p;	// flags 
-	u8		m_sp;	// stack register
-	u16		m_pc;	// program counter
+	CpuRegister		m_creg;
+	CpuRegister		m_cregPrev;
 
-	u64		m_cCpuCycles; 		// 1 cpu cycle == 3 Ppu cycle
+	u64				m_cCycleCpu;		// count of cycles elapsed this frame 		
+										// 1 cpu cycle == 3 Ppu cycle
 };
 
 enum MEMSP : u16 // MEMory SPan
@@ -157,13 +177,12 @@ struct Model // tag = model
 struct Famicom // tag = fam
 {
 				Famicom()
-				:m_pCpu(nullptr)
-				,m_pPpu(nullptr)
-				,m_pModel(nullptr)
+				:m_pModel(nullptr)
+				,m_pCart(nullptr)
 					{ ; }
 
-	Cpu * 		m_pCpu;
-	Ppu * 		m_pPpu;
+	Cpu  		m_cpu;
+	Ppu  		m_ppu;
 	Model * 	m_pModel;
 	Cart *		m_pCart;
 	MemoryMap 	m_memmp;

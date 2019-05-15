@@ -14,20 +14,19 @@
 
 int main(int cpChzArg, const char * apChzArg[])
 {
-	Famicom	fam;
 	Cart cart;
-	fam.m_pCart = &cart;
+	g_fam.m_pCart = &cart;
 
 	if (cpChzArg > 1)
 	{
-		bool fLoaded = FTryLoadRomFromFile(apChzArg[1], &cart, &fam.m_memmp);
+		bool fLoaded = FTryLoadRomFromFile(apChzArg[1], &cart, &g_fam.m_memmp);
 		if (!fLoaded)
 		{
 			printf("failed to load '%s'\n", apChzArg[1]);
 			return 0;
 		}
 
-		u16 addrStartup = U16ReadMem(&fam.m_memmp, kAddrReset);
+		u16 addrStartup = U16ReadMem(&g_fam.m_memmp, kAddrReset);
 		printf("loaded '%s'   reset vector = %x\n", apChzArg[1], addrStartup);
 	}
 
@@ -47,6 +46,7 @@ int main(int cpChzArg, const char * apChzArg[])
 
 	bool fShowImguiDemoWindow = true;
 	bool fShowDisasmWindow = true;
+	bool fShowRegisterWindow = true;
 	while (!FShouldWindowClose(&plat))
 	{
 		ClearScreen(&plat);
@@ -63,7 +63,12 @@ int main(int cpChzArg, const char * apChzArg[])
 
 		if (fShowDisasmWindow)
 		{
-			UpdateDisassemblyWindow(&fam, &fShowDisasmWindow);
+			UpdateDisassemblyWindow(&g_fam, &fShowDisasmWindow);
+		}
+
+		if (fShowRegisterWindow)
+		{
+			UpdateRegisterWindow(&g_fam, &fShowRegisterWindow);
 		}
 
 		// Render dear imgui into screen

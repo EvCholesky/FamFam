@@ -1,4 +1,4 @@
-
+#pragma once
 
 static const int kCBVramPhysical = 16 * 1024;
 
@@ -86,6 +86,5 @@ union OAM	// Object Attribute Memory, aka sprite data
 
 struct Ppu
 {
-
 	OAM		m_soamSecondary[8];		// internal sprite memory inaccessible to the program; used to cache the sprites rendered in the current scanline. 
 };

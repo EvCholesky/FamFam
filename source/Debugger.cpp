@@ -3,7 +3,11 @@
 #include "imgui.h"
 #include "Rom.h"
 #include "stdio.h"
+#include <ctype.h>
 
+static float s_dXRegisterDec = 50.0f;
+static float s_dXRegisterHex = 50.0f;
+static ImVec2 s_szRegisterHex = {43.0f, 19.0f};
 
 void GetOpcodeColor(OPCAT opcat, ImVec4 * pCol)
 {
@@ -31,7 +35,7 @@ void GetOpcodeColor(OPCAT opcat, ImVec4 * pCol)
 	auto & colt = s_mpOpcatColt[opcat];
 	*pCol = ImVec4(colt.m_r, colt.m_g, colt.m_b, 1.0f);
 }
- static int FFilterAddressHex(ImGuiInputTextCallbackData* data) 
+ static int FFilterHexText(ImGuiInputTextCallbackData* data) 
  { 
 	 auto ch = data->EventChar;
 	 if (((ch >= int('0')) & (ch <= int('9'))) |
@@ -42,14 +46,24 @@ void GetOpcodeColor(OPCAT opcat, ImVec4 * pCol)
 	 return 1; 
 } 
 
-bool FTryParseAddress(const char * pChz, u16 * pNAddr)
+bool FTryParseU32(const char * pChz, u32 * pN)
 {
 	auto pChzIt = pChz;
 	u32 n = 0;
-	if (*pChzIt == '$')
+	bool fIsHex = false; 
+	if (pChzIt[0] == '0' && pChzIt[1] == 'x')
+	{
+		pChzIt += 2;
+		fIsHex = true;
+	}
+	else if (*pChzIt == '$')
 	{
 		++pChzIt;
+		fIsHex = true;
+	}
 
+	if (fIsHex)
+	{
 		// hex literal
 		while (*pChzIt != '\0') 
 		{
@@ -78,11 +92,32 @@ bool FTryParseAddress(const char * pChz, u16 * pNAddr)
 	    }
 	}
 
+	*pN = n;
+	return *pChzIt == '\0';
+}
+
+bool FTryParseU8(const char * pChz, u8 * pNAddr)
+{
+	u32 n;
+	if (!FTryParseU32(pChz, &n))
+		return false;
+	if (n >= 0xFF)
+		return false;
+
+	*pNAddr = U8Coerce(n);
+	return true;
+}
+
+bool FTryParseU16(const char * pChz, u16 * pNAddr)
+{
+	u32 n;
+	if (!FTryParseU32(pChz, &n))
+		return false;
 	if (n >= 0xFFFF)
 		return false;
 
 	*pNAddr = U16Coerce(n);
-	return *pChzIt == '\0';
+	return true;
 }
 
 int IFindAddr(const DynAry<u16> & aryAddr, u16 addr)
@@ -115,7 +150,7 @@ void UpdateDisassemblyWindow(Famicom * pFam, bool * pFShowDisasm)
 	// toolbar
 	static bool fShowBytes = true;
 	static char aChSeek[8] = "$";
-    bool fSeek = ImGui::InputText("seek address", aChSeek, FF_DIM(aChSeek), ImGuiInputTextFlags_CallbackCharFilter, FFilterAddressHex);
+    bool fSeek = ImGui::InputText("seek address", aChSeek, FF_DIM(aChSeek), ImGuiInputTextFlags_CallbackCharFilter, FFilterHexText);
 
 	ImGui::SameLine();
     ImGui::Checkbox("Show Bytes", &fShowBytes);
@@ -224,7 +259,7 @@ void UpdateDisassemblyWindow(Famicom * pFam, bool * pFShowDisasm)
 	if (fSeek)
 	{
 		u16 addrSeek;
-		if (FTryParseAddress(aChSeek, &addrSeek))
+		if (FTryParseU16(aChSeek, &addrSeek))
 		{
 			int iAddr = IFindAddr(pCart->m_aryAddrInstruct, addrSeek);
 			if (iAddr >= 0)
@@ -235,5 +270,155 @@ void UpdateDisassemblyWindow(Famicom * pFam, bool * pFShowDisasm)
 	}
 
     ImGui::EndChild();
+    ImGui::End();
+}
+
+ImVec4 * PColRegister(bool fEnabled, bool fChanged)
+{
+	static ImVec4 s_colEnabledSame(0.7f, 0.7f, 0.7f, 1.0f);
+	static ImVec4 s_colEnabledChange(0.8f, 0.4f, 0.4f, 1.0f);
+	static ImVec4 s_colDisabledSame(0.4f, 0.4f, 0.4f, 1.0f);
+	static ImVec4 s_colDisabledChange(0.5f, 0.2f, 0.2f, 1.0f);
+	if (fEnabled)
+	{
+		return (fChanged) ? &s_colEnabledSame : &s_colEnabledChange;
+	}
+
+	return (fChanged) ? &s_colDisabledSame : &s_colDisabledChange;
+}
+
+bool FInputRegister8(const char * pChzLabel, u8 * pB, u8 bPrev)
+{
+	ImGui::PushID(pB);
+	char aChDec[32];
+	char aChHex[32];
+	sprintf_s(aChDec, FF_DIM(aChDec), "%d", *pB);
+
+	auto pCol = PColRegister(true, *pB == bPrev);
+	ImGui::TextColored(*pCol, aChDec);
+	ImGui::SetColumnWidth(-1, s_dXRegisterDec);
+	ImGui::NextColumn();
+
+	sprintf_s(aChHex, FF_DIM(aChHex), "$%02x", *pB);
+	
+	bool fEdited = false;
+	if (ImGui::BeginPopup("Edit register"))
+	{
+		fEdited = ImGui::InputText(pChzLabel, aChHex, FF_DIM(aChHex), ImGuiInputTextFlags_EnterReturnsTrue|ImGuiInputTextFlags_CallbackCharFilter, FFilterHexText);
+		u8 nReg;
+		if (fEdited && FTryParseU8(aChHex, &nReg))
+		{
+			*pB = nReg;
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+
+	if (ImGui::Button(aChHex, s_szRegisterHex))
+	{
+		ImGui::OpenPopup("Edit register");
+	}
+
+	ImGui::SetColumnWidth(-1, s_dXRegisterHex);
+	ImGui::NextColumn();
+
+	ImGui::Text(pChzLabel);
+	ImGui::NextColumn();
+
+	ImGui::PopID();
+	return fEdited;
+}
+
+bool FInputRegister16(const char * pChzLabel, u16 * pB, u16 bPrev)
+{
+	ImGui::PushID(pB);
+	char aChDec[32];
+	char aChHex[32];
+	sprintf_s(aChDec, FF_DIM(aChDec), "%d", *pB);
+
+	auto pCol = PColRegister(true, *pB == bPrev);
+	ImGui::TextColored(*pCol, aChDec);
+	ImGui::SetColumnWidth(-1, s_dXRegisterDec);
+	ImGui::NextColumn();
+
+	bool fEdited = false;
+	sprintf_s(aChHex, FF_DIM(aChHex), "$%04x", *pB);
+	if (ImGui::BeginPopup("Edit register"))
+	{
+		fEdited = ImGui::InputText(pChzLabel, aChHex, FF_DIM(aChHex), ImGuiInputTextFlags_EnterReturnsTrue|ImGuiInputTextFlags_CallbackCharFilter, FFilterHexText);
+		u16 nReg;
+		if (fEdited && FTryParseU16(aChHex, &nReg))
+		{
+			*pB = nReg;
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+
+	if (ImGui::Button(aChHex, s_szRegisterHex))
+	{
+		ImGui::OpenPopup("Edit register");
+	}
+
+	ImGui::SetColumnWidth(-1, s_dXRegisterHex);
+	ImGui::NextColumn();
+
+	ImGui::Text(pChzLabel);
+	ImGui::NextColumn();
+
+	ImGui::PopID();
+	return fEdited;
+}
+
+
+
+void UpdateFlagsString(const char * aChzLetters, u8 bFlags, u8 bFlagsPrev)
+{
+	char aChz[2];
+	aChz[1] = '\0';
+
+	int iBit = 7;
+	for (const char * pCh = aChzLetters; *pCh != '\0'; ++pCh, --iBit)
+	{
+		u8 bMask = 0x1 << iBit;
+
+		bool fIsSet = (bFlags & bMask) != 0;
+		bool fWasSet = (bFlagsPrev & bMask) != 0;
+		aChz[0] = (fIsSet) ? toupper(*pCh) : tolower(*pCh);
+		auto pCol = PColRegister(fIsSet, fIsSet == fWasSet);
+
+		ImGui::TextColored(*pCol, aChz);
+
+		if (iBit > 0)
+		{
+			ImGui::SameLine(0, 0);
+		}
+		else 
+		{
+			break;
+		}
+	}
+}
+
+void UpdateRegisterWindow(Famicom * pFam, bool * pFShowWindow)
+{
+    ImGui::SetNextWindowSize(ImVec2(520,300), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Register", pFShowWindow))
+    {
+        ImGui::End();
+        return;
+    }
+
+	Cpu * pCpu = &pFam->m_cpu;
+	UpdateFlagsString("no_bdizc", pCpu->m_creg.m_p, pCpu->m_cregPrev.m_p);
+
+	ImGui::Columns(3, "regCol", false);  // 3-ways, no border
+
+	FInputRegister8("A", &pCpu->m_creg.m_a, pCpu->m_cregPrev.m_a);
+	FInputRegister8("X", &pCpu->m_creg.m_x, pCpu->m_cregPrev.m_x);
+	FInputRegister8("Y", &pCpu->m_creg.m_y, pCpu->m_cregPrev.m_y);
+	FInputRegister8("SP", &pCpu->m_creg.m_sp, pCpu->m_cregPrev.m_sp);
+	FInputRegister16("PC", &pCpu->m_creg.m_pc, pCpu->m_cregPrev.m_pc);
+
     ImGui::End();
 }
