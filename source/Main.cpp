@@ -26,7 +26,7 @@ int main(int cpChzArg, const char * apChzArg[])
 			return 0;
 		}
 
-		u16 addrStartup = U16ReadMem(&g_fam.m_memmp, kAddrReset);
+		u16 addrStartup = U16ReadMem(&g_fam.m_cpu, &g_fam.m_memmp, kAddrReset);
 		printf("loaded '%s'   reset vector = %x\n", apChzArg[1], addrStartup);
 	}
 
@@ -43,6 +43,9 @@ int main(int cpChzArg, const char * apChzArg[])
 	// Initialize helper Platform and Renderer bindings (here we are using imgui_impl_win32 and imgui_impl_dx11)
 	ImGui_ImplGlfw_InitForOpenGL(plat.m_pGlfwin, false);
     ImGui_ImplOpenGL2_Init();
+
+	if (!FTryAllLogTests())
+		return 0;
 
 	bool fShowImguiDemoWindow = true;
 	bool fShowDisasmWindow = true;

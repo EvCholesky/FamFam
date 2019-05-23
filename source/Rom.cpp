@@ -59,7 +59,7 @@ bool FTrySetupMapperNrom(MemoryMap* pMemmp, Cart* pCart)
 		{
 			auto addrspPrg = AddrspMapMemory(pMemmp, 0x8000, 0xC000, FMEM_ReadOnly);
 			MapMirrored(pMemmp, addrspPrg, 0xC000, 0x10000);
-			CopyAB(pCart->m_pBPrgRom, &pMemmp->m_pBRaw[0x8000], FF_KIB(16));
+			CopyAB(pCart->m_pBPrgRom, &pMemmp->m_aBRaw[0x8000], FF_KIB(16));
 
 			AppendAddrOffset(&pCart->m_aryAddrInstruct, 0x8000, pCart->m_pBPrgRom, pCart->m_cBPrgRom);
 			AppendAddrOffset(&pCart->m_aryAddrInstruct, 0xC000, pCart->m_pBPrgRom, pCart->m_cBPrgRom);
@@ -70,7 +70,7 @@ bool FTrySetupMapperNrom(MemoryMap* pMemmp, Cart* pCart)
 	case FF_KIB(32):
 		{
 			(void)AddrspMapMemory(pMemmp, 0x8000, 0x10000, FMEM_ReadOnly);
-			CopyAB(pCart->m_pBPrgRom, &pMemmp->m_pBRaw[0x8000], FF_KIB(32));
+			CopyAB(pCart->m_pBPrgRom, &pMemmp->m_aBRaw[0x8000], FF_KIB(32));
 
 			AppendAddrOffset(&pCart->m_aryAddrInstruct, 0x8000, pCart->m_pBPrgRom, pCart->m_cBPrgRom);
 
@@ -82,7 +82,7 @@ bool FTrySetupMapperNrom(MemoryMap* pMemmp, Cart* pCart)
 		return false;
 	}
 
-	TestMemoryMap(pMemmp);
+	//TestMemoryMap(pMemmp);
 	return true;
 }
 
@@ -205,10 +205,6 @@ bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart, MemoryMap * pMemmp)
 	pCart->m_cBPrgRom = CPageRom(sizePrgRomMSB, pHead->m_cPagePrgRom) * 16 * 1024;
 	pCart->m_cBChrRom = CPageRom(sizeChrRomMSB, pHead->m_cPageChrRom) * 8 * 1024;
 	pCart->m_mapperk = (MAPPERK)mapperk;
-
-	//ResizeBuffer(&pCart->m_bufPrgRom, cPagePrgRom * 16);
-	//ResizeBuffer(&pCart->m_bufChrRom, cPageChrRom * 8);
-	//pFam->m_pMapper = PMapperFromMapperk(MAPPERK(mapperk));
 
 	// after the header is the trainer 0 or 512 bytes
 	u8 * pBTrainer = pB + sizeof(RomHeader);

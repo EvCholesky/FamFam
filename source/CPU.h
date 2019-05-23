@@ -6,6 +6,7 @@
 
 static const int kCBRamPhysical = 2 * 1024; // 0x800
 
+struct Famicom;
 struct Ppu;
 struct Cart;
 
@@ -17,6 +18,7 @@ enum FCPU : u8
 	FCPU_InterruptDisable	= 0x4,
 	FCPU_DecimalMode		= 0x8,
 	FCPU_Break				= 0x10,
+	FCPU_Unused				= 0x20,
 	FCPU_Overflow			= 0x40,
 	FCPU_Negative			= 0x80,
 };
@@ -35,7 +37,7 @@ struct CpuRegister // tag = creg
 	u8				m_a;
 	u8				m_x;
 	u8				m_y;
-	FCPU			m_p;	// flags 
+	u8				m_p;	// flags 
 	u8				m_sp;	// stack register
 	u16				m_pc;	// program counter
 };
@@ -49,7 +51,7 @@ struct Cpu // tag = cpu
 	CpuRegister		m_creg;
 	CpuRegister		m_cregPrev;
 
-	u64				m_cCycleCpu;		// count of cycles elapsed this frame 		
+	s64				m_cCycleCpu;		// count of cycles elapsed this frame 		
 										// 1 cpu cycle == 3 Ppu cycle
 };
 
@@ -64,11 +66,12 @@ enum MEMSP : u16 // MEMory SPan
 	MEMSP_RamMirrorMin	= 0x0800,
 	MEMSP_RamMirrorMax	= 0x2000,
 
-	MEMSP_IoRegisterMin = 0x2000,
-	MEMSP_IoRegisterMax = 0x2008,
-	MEMSP_IoMirrorsMin 	= 0x2008,
-	MEMSP_IoUpperMin 	= 0x4000,
-	MEMSP_IoUpperMax 	= 0x4020,
+	MEMSP_PpuRegisterMin = 0x2000,
+	MEMSP_PpuRegisterMax = 0x2008,
+	MEMSP_PpuMirrorsMin = 0x2008,
+	MEMSP_PpuMirrorsMax = 0x4000,
+	MEMSP_IoRegisterMin = 0x4000,
+	MEMSP_IoRegisterMax = 0x4020,
 
 	MEMSP_ExpansionMin	= 0x4020,
 	MEMSP_ExpansionMax	= 0x6000,
@@ -125,7 +128,7 @@ struct MemoryMap // tag = memmp
 					~MemoryMap()
 						{ ClearMemmp(this); }
 
-	u8 				m_pBRaw[kCBAddressable];				// 64k of raw memory
+	u8 				m_aBRaw[kCBAddressable];				// 64k of raw memory
 	u8 *			m_mpAddrPB[kCBAddressable];
 	FMEM 			m_mpAddrFmem[kCBAddressable];
 	u8				m_bPrevBus;
@@ -139,30 +142,12 @@ void TestMemoryMap(MemoryMap * pMemmp);
 void VerifyPrgRom(MemoryMap * pMemmp, u8 * pBPrgRom, u32 addrMin, u32 addrMax);
 
 u8 U8PeekMem(MemoryMap * pMemmp, u16 addr); // return an address value without the machine emulating a memory read
-u8 U8ReadMem(MemoryMap * pMemmp, u16 addr);
-u16 U16ReadMem(MemoryMap * pMemmp, u16 addr);
+u8 U8ReadMem(Cpu * pCpu, MemoryMap * pMemmp, u16 addr);
+u16 U16ReadMem(Cpu * pCpu, MemoryMap * pMemmp, u16 addr);
 
-void WriteMemU8(MemoryMap * pMemmp, u16 addr, u8 b);
-void WriteMemU16(MemoryMap * pMemmp, u16 addr, u16 n);
-
-inline u8 U8ReadMem(MemoryMap * pMemmp, u16 addr)
-{
-	u8 b = U8PeekMem(pMemmp, addr);
-	pMemmp->m_bPrevBus = b;
-	return b;
-}
-
-inline u16 U16ReadMem(MemoryMap * pMemmp, u16 addr)
-{
-	u16 n = U8ReadMem(pMemmp, addr) | (u16(U8ReadMem(pMemmp, addr+1)) << 8);
-	return n;
-}
-
-inline void WriteMemU16(MemoryMap * pMemmp, u16 addr, u16 n)
-{
-	WriteMemU8(pMemmp, addr, u8(n));
-	WriteMemU8(pMemmp, addr+1, u8(n >> 8));
-}
+void PokeMemU8(MemoryMap * pMemmp, u16 addr, u8 b);
+void WriteMemU8(Cpu * pCpu, MemoryMap * pMemmp, u16 addr, u8 b);
+void WriteMemU16(Cpu * pCpu, MemoryMap * pMemmp, u16 addr, u16 n);
 
 enum MODELK
 {
@@ -188,7 +173,41 @@ struct Famicom // tag = fam
 	MemoryMap 	m_memmp;
 };
 
+inline u8 U8ReadMem(Cpu * pCpu, MemoryMap * pMemmp, u16 addr)
+{
+	u8 b = U8PeekMem(pMemmp, addr);
+	pMemmp->m_bPrevBus = b;
+	++pCpu->m_cCycleCpu;
+	return b;
+}
+inline u8 U8ReadMem(Famicom * pFam, u16 addr)
+{
+	return U8ReadMem(&pFam->m_cpu, &pFam->m_memmp, addr);
+}
 
+inline u16 U16ReadMem(Cpu * pCpu, MemoryMap * pMemmp, u16 addr)
+{
+	u16 n = U8ReadMem(pCpu, pMemmp, addr) | (u16(U8ReadMem(pCpu, pMemmp, addr+1)) << 8);
+	return n;
+}
+
+inline u16 U16PeekMem(MemoryMap * pMemmp, u16 addr)
+{
+	u16 n = U8PeekMem(pMemmp, addr) | (u16(U8PeekMem(pMemmp, addr+1)) << 8);
+	return n;
+}
+
+inline void WriteMemU8(Cpu * pCpu, MemoryMap * pMemmp, u16 addr, u8 b)
+{
+	PokeMemU8(pMemmp, addr, b);
+	++pCpu->m_cCycleCpu;
+}
+
+inline void WriteMemU16(Cpu * pCpu, MemoryMap * pMemmp, u16 addr, u16 n)
+{
+	WriteMemU8(pCpu, pMemmp, addr, u8(n));
+	WriteMemU8(pCpu, pMemmp, addr+1, u8(n >> 8));
+}
 
 #define INFO(AM, DESC) AMOD_##AM,
 enum AMOD // Addressing  MODe
@@ -282,6 +301,15 @@ const OpInfo * POpinfoFromOpcode(u8 nOpcode);
 extern Famicom g_fam;
 
 void DumpAsm(Famicom * pFam, u16 addrMin, int cB);
-void SetPowerUpState(Famicom * pFam);
-void SetResetState(Famicom * pFam);
+
+enum FPOW // Flags for POWer up
+{
+	FPOW_None		= 0x0,
+	FPOW_LogTest	= 0x1,
+};
+
+void SetPowerUpState(Famicom * pFam, u16 fpow);
+void SetPpuPowerUpState(Famicom * pFam, u16 fpow);
+
+bool FTryAllLogTests();
 

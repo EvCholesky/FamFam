@@ -161,7 +161,7 @@ void UpdateDisassemblyWindow(Famicom * pFam, bool * pFShowDisasm)
 
     // Multiple calls to Text(), manually coarsely clipped - demonstrate how to use the ImGuiListClipper helper.
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0,0));
-    ImGuiListClipper clipper(pCart->m_aryAddrInstruct.C());
+    ImGuiListClipper clipper(int(pCart->m_aryAddrInstruct.C()));
 
 	char aChOpcode[128];
 	

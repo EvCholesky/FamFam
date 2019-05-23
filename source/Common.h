@@ -40,7 +40,7 @@ struct Buffer // tag = buf
 void ResizeBuffer(Buffer * pBuf, int cB);
 
 #define FF_DIM(arr) (sizeof(arr) / sizeof(*arr))
-#define FF_PMAC(arr) &arr[EWC_DIM(arr)]
+#define FF_PMAX(arr) &arr[FF_DIM(arr)]
 
 #if defined( __GNUC__ )
 	#define		FF_FORCE_INLINE	inline __attribute__((always_inline))

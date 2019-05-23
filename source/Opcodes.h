@@ -19,7 +19,7 @@
 
 
 
- //				(ADDK, ADMD, 		cB
+ //			(ADDK, ADMD, 		cB
 #define ADDRESS_MODE_RW_INFO \
         INFO(IMP, Implicit, 	1) \
         INFO(IMM, Immediate, 	2) \
@@ -118,6 +118,7 @@
 		OPCODE(SRE, Illegal, "ILLEGAL: ") \
 		OPCODE(TAS, Illegal, "ILLEGAL: ") \
 		OPCODE(XAA, Illegal, "ILLEGAL: A := X & Immediate, UNSTABLE!")
+
 
 
 #define OPCODE_TABLE \
