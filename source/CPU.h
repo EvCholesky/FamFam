@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Array.h"
 #include "Common.h"
 #include "Opcodes.h"
 #include "PPu.h"
@@ -46,6 +47,7 @@ struct Cpu // tag = cpu
 {
 					Cpu()
 					:m_cCycleCpu(0)
+					,m_cCycleCpuPrev(0)
 						{ ; }
 
 	CpuRegister		m_creg;
@@ -53,6 +55,7 @@ struct Cpu // tag = cpu
 
 	s64				m_cCycleCpu;		// count of cycles elapsed this frame 		
 										// 1 cpu cycle == 3 Ppu cycle
+	s64				m_cCycleCpuPrev;	// last cpu cycle used to spoof the PPu
 };
 
 enum MEMSP : u16 // MEMory SPan
@@ -116,7 +119,32 @@ enum FMEM : u8
 	FMEM_BreakOnRead	= 0x4,
 	FMEM_BreakOnWrite	= 0x8,
 };
-struct AddressSpan // tab = addrsp
+
+struct MemoryDescriptor //  tag = memdesc
+{
+				MemoryDescriptor()
+				:m_fmem(FMEM_None)
+				,m_iMemcb(0)
+					{ ; }
+
+				MemoryDescriptor(FMEM fmem, u8 iMemcb = 0)
+				:m_fmem(fmem)
+				,m_iMemcb(iMemcb)
+					{ ; }
+
+	u8		m_fmem;
+	u8		m_iMemcb;	// index into the memory callback table, 0 == no cb
+};
+
+typedef u8 (*PFnReadMemCallback)(MemoryMap * pMemmp, u16 addr);  
+typedef void (*PFnWriteMemCallback)(MemoryMap * pMemmp, u16 addr, u8 b);  
+struct MemoryCallback // tag = memcb
+{
+	PFnReadMemCallback		m_pFnReadmem;
+	PFnWriteMemCallback		m_pFnWritemem;
+};
+ 
+struct AddressSpan // tag = addrsp
 {
 	u16		m_addrMin;
 	u16		m_addrMax;
@@ -124,19 +152,22 @@ struct AddressSpan // tab = addrsp
 
 struct MemoryMap // tag = memmp
 {
-					MemoryMap();
-					~MemoryMap()
-						{ ClearMemmp(this); }
+								MemoryMap();
+								~MemoryMap()
+									{ ClearMemmp(this); }
 
-	u8 				m_aBRaw[kCBAddressable];				// 64k of raw memory
-	u8 *			m_mpAddrPB[kCBAddressable];
-	FMEM 			m_mpAddrFmem[kCBAddressable];
-	u8				m_bPrevBus;
+	u8							m_aBRaw[kCBAddressable];				// 64k of raw memory
+	u8 *						m_mpAddrPB[kCBAddressable];
+	MemoryDescriptor			m_mpAddrMemdesc[kCBAddressable];
+	FixAry<MemoryCallback, 128>	m_aryMemcb;
+	u8							m_bPrevBus;
+	u8							m_bPrevBusPpu;
 };
 
-AddressSpan AddrspMapMemory(MemoryMap * pMemmp, u32 addrMin, u32 addrMax, u8 fmem = FMEM_None);
+AddressSpan AddrspMapMemory(MemoryMap * pMemmp, u32 addrMin, u32 addrMax, const MemoryDescriptor * pMemdesc = nullptr, int cMemdesc = 0);
 AddressSpan AddrspMarkUnmapped(MemoryMap * pMemmp, u32 addrMin, u32 addrMax);
-void MapMirrored(MemoryMap * pMemmp, AddressSpan addrspBase, u32 addrMin, u32 addrMax, u8 fmem = FMEM_None);
+void MapMirrored(MemoryMap * pMemmp, AddressSpan addrspBase, u32 addrMin, u32 addrMax, const MemoryDescriptor * aMemdec = nullptr, int cMemdesc = 0);
+u8 IMemcbAllocate(MemoryMap * pMemmp, PFnReadMemCallback pFnRead, PFnWriteMemCallback pFnWrite); 
 
 void TestMemoryMap(MemoryMap * pMemmp);
 void VerifyPrgRom(MemoryMap * pMemmp, u8 * pBPrgRom, u32 addrMin, u32 addrMax);
@@ -148,6 +179,11 @@ u16 U16ReadMem(Cpu * pCpu, MemoryMap * pMemmp, u16 addr);
 void PokeMemU8(MemoryMap * pMemmp, u16 addr, u8 b);
 void WriteMemU8(Cpu * pCpu, MemoryMap * pMemmp, u16 addr, u8 b);
 void WriteMemU16(Cpu * pCpu, MemoryMap * pMemmp, u16 addr, u16 n);
+
+u8 U8PeekWriteOnlyPpuReg(MemoryMap * pMemmp, u16 addr);
+u8 U8PeekPpuStatus(MemoryMap * pMemmp, u16 addr);
+u8 U8PeekPpuReg(MemoryMap * pMemmp, u16 addr);
+void PokePpuReg(MemoryMap * pMemmp, u16 addr, u8 b);
 
 enum MODELK
 {

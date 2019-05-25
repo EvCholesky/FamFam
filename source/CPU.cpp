@@ -84,37 +84,94 @@ const OpInfo * POpinfoFromOpcode(u8 nOpcode)
 	return &s_mpOpcodeOpinfo[nOpcode];
 }
 
-u8 U8PeekMem(MemoryMap * pMemmp, u16 addr)
+u8 U8PeekWriteOnlyPpuReg(MemoryMap * pMemmp, u16 addr)
 {
+	return pMemmp->m_bPrevBusPpu;
+}
+
+u8 U8PeekPpuStatus(MemoryMap * pMemmp, u16 addr)
+{
+	u8 bStatus = pMemmp->m_aBRaw[PPUREG_Status];
+	pMemmp->m_aBRaw[PPUREG_Status] &= ~0x80;
+
+	u8 bRet = pMemmp->m_bPrevBusPpu & 0x1F;
+	bRet |= (bStatus & 0xE0);
+
+	pMemmp->m_bPrevBusPpu = bRet;
+	return bRet;
+}
+
+u8 U8PeekPpuReg(MemoryMap * pMemmp, u16 addr)
+{
+	// BB - Probably need to split this for ppu registers that can be updated by the ppu or
+	//  registers that just let you read back what you wrote. (when we add code to run the PPU here)
+
 	u8 * pB = pMemmp->m_mpAddrPB[addr];
 
 	u8 b = *pB; 
+	pMemmp->m_bPrevBusPpu = b;
+	return b;
+}
+
+void PokePpuReg(MemoryMap * pMemmp, u16 addr, u8 b)
+{
+	const MemoryDescriptor & memdesc = pMemmp->m_mpAddrMemdesc[addr];
+
+	pMemmp->m_bPrevBusPpu = b;
+	u8 bDummy;
+	u8 * pB = ((memdesc.m_fmem & FMEM_ReadOnly) == 0) ? pMemmp->m_mpAddrPB[addr] : &bDummy;
+	*pB = b;
+}
+
+u8 U8PeekMem(MemoryMap * pMemmp, u16 addr)
+{
+	const MemoryDescriptor & memdesc = pMemmp->m_mpAddrMemdesc[addr];
+	if (memdesc.m_iMemcb)
+	{
+		return (*pMemmp->m_aryMemcb[memdesc.m_iMemcb].m_pFnReadmem)(pMemmp, addr);
+	}
+
+	u8 * pB = pMemmp->m_mpAddrPB[addr];
+
+	u8 b = *pB; 
+	pMemmp->m_bPrevBus = b;
 	return b;
 }
 
 void PokeMemU8(MemoryMap * pMemmp, u16 addr, u8 b)
 {
+	const MemoryDescriptor & memdesc = pMemmp->m_mpAddrMemdesc[addr];
+	if (memdesc.m_iMemcb)
+	{
+		(*pMemmp->m_aryMemcb[memdesc.m_iMemcb].m_pFnWritemem)(pMemmp, addr, b);
+		return;
+	}
+
 	pMemmp->m_bPrevBus = b;
-	FMEM fmem = pMemmp->m_mpAddrFmem[addr];
 
 	u8 bDummy;
-	u8 * pB = ((fmem & FMEM_ReadOnly) == 0) ? pMemmp->m_mpAddrPB[addr] : &bDummy;
+	u8 * pB = ((memdesc.m_fmem & FMEM_ReadOnly) == 0) ? pMemmp->m_mpAddrPB[addr] : &bDummy;
 	*pB = b;
 }
 
 MemoryMap::MemoryMap()
 :m_bPrevBus(0)
+,m_bPrevBusPpu(0)
 {
 	ZeroAB(m_aBRaw, sizeof(m_aBRaw));
 	ZeroAB(m_mpAddrPB, sizeof(m_mpAddrPB));
-	ZeroAB(m_mpAddrFmem, sizeof(m_mpAddrFmem));
+	ZeroAB(m_mpAddrMemdesc, sizeof(m_mpAddrMemdesc));
+
+	// waste a few bytes to allow index zero to indicate no callbacks
+	MemoryCallback memcb = {nullptr, nullptr};
+	m_aryMemcb.Append(memcb);
 }
 
 void ClearMemmp(MemoryMap * pMemmp)
 {
 	ZeroAB(pMemmp->m_aBRaw, sizeof(pMemmp->m_aBRaw));
 	ZeroAB(pMemmp->m_mpAddrPB, sizeof(pMemmp->m_mpAddrPB));
-	ZeroAB(pMemmp->m_mpAddrFmem, sizeof(pMemmp->m_mpAddrFmem));
+	ZeroAB(pMemmp->m_mpAddrMemdesc, sizeof(pMemmp->m_mpAddrMemdesc));
 }
 
 void VerifyMemorySpanClear(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
@@ -125,7 +182,7 @@ void VerifyMemorySpanClear(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
 	for (u32 addrIt = addrMin; addrIt < addrMax; ++addrIt)
 	{
 		FF_ASSERT(pMemmp->m_mpAddrPB[addrIt] == nullptr);
-		FF_ASSERT(pMemmp->m_mpAddrFmem[addrIt] == FMEM_None);
+		FF_ASSERT(pMemmp->m_mpAddrMemdesc[addrIt].m_fmem == FMEM_None);
 	}
 }
 
@@ -185,15 +242,27 @@ void VerifyMirror(MemoryMap * pMemmp, u32 addrBaseMin, u32 addrBaseMax, u32 addr
 	}
 }
 
-AddressSpan AddrspMapMemory(MemoryMap * pMemmp, u32 addrMin, u32 addrMax, u8 fmem)
+AddressSpan AddrspMapMemory(MemoryMap * pMemmp, u32 addrMin, u32 addrMax, const MemoryDescriptor * aMemdesc, int cMemdesc)
 {
 	VerifyMemorySpanClear(pMemmp, addrMin, addrMax);
 	FF_ASSERT(addrMax > addrMin, "bad min/max addresses");
 	FF_ASSERT(addrMin <= kCBAddressable && addrMin <= kCBAddressable, "address outside of range");
 
-	fmem |= FMEM_Mapped;
-	static_assert(sizeof(fmem) == 1, "expected one byte flags");
-	memset(&pMemmp->m_mpAddrFmem[addrMin], fmem, addrMax - addrMin);
+	MemoryDescriptor memdesc;
+	if (cMemdesc == 0)
+	{
+		cMemdesc = 1;
+		aMemdesc = &memdesc;
+	}
+
+	int iMemdesc = 0;
+	auto pMemdescMax = &pMemmp->m_mpAddrMemdesc[addrMax];
+	for (auto pMemdescIt = &pMemmp->m_mpAddrMemdesc[addrMin]; pMemdescIt != pMemdescMax; ++pMemdescIt)
+	{
+		*pMemdescIt = aMemdesc[iMemdesc];
+		pMemdescIt->m_fmem |= FMEM_Mapped;
+		iMemdesc = (iMemdesc + 1) % cMemdesc;
+	}
 
 	u8 ** ppBMax = &pMemmp->m_mpAddrPB[addrMax];
 	u8 * pBRaw = &pMemmp->m_aBRaw[addrMin];
@@ -213,9 +282,12 @@ AddressSpan AddrspMarkUnmapped(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
 	FF_ASSERT(addrMax > addrMin, "bad min/max addresses");
 	FF_ASSERT(addrMin <= kCBAddressable && addrMin <= kCBAddressable, "address outside of range");
 
-	FMEM fmem = FMEM_ReadOnly; // !unmapped
-	static_assert(sizeof(fmem) == 1, "Expected one byte flags");
-	memset(&pMemmp->m_mpAddrFmem[addrMin], fmem, addrMax - addrMin);
+	MemoryDescriptor memdesc(FMEM_ReadOnly);
+	auto pMemdescMax = &pMemmp->m_mpAddrMemdesc[addrMax];
+	for (auto pMemdescIt = &pMemmp->m_mpAddrMemdesc[addrMin]; pMemdescIt != pMemdescMax; ++pMemdescIt)
+	{
+		*pMemdescIt = memdesc;
+	}
 
 	// Unmapped memory maps the pB array at the last value left on the bus 
 	// If we spend too much time setting / clearing this we could check a flag on memory writes, but that seems worse.
@@ -232,11 +304,24 @@ AddressSpan AddrspMarkUnmapped(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
 	return addrsp;
 }
 
-void MapMirrored(MemoryMap * pMemmp, AddressSpan addrspBase, u32 addrMin, u32 addrMax, u8 fmem)
+void MapMirrored(MemoryMap * pMemmp, AddressSpan addrspBase, u32 addrMin, u32 addrMax, const MemoryDescriptor * aMemdesc, int cMemdesc)
 {
-	fmem |= FMEM_Mapped;
-	static_assert(sizeof(fmem) == 1, "expected one byte flags");
-	memset(&pMemmp->m_mpAddrFmem[addrMin], fmem, addrMax - addrMin);
+	MemoryDescriptor memdesc;
+	if (cMemdesc == 0)
+	{
+		cMemdesc = 1;
+		aMemdesc = &memdesc;
+	}
+
+	int iMemdesc = 0;
+	auto pMemdescMax = &pMemmp->m_mpAddrMemdesc[addrMax];
+	for (auto pMemdescIt = &pMemmp->m_mpAddrMemdesc[addrMin]; pMemdescIt != pMemdescMax; ++pMemdescIt)
+	{
+		*pMemdescIt = aMemdesc[iMemdesc];
+		pMemdescIt->m_fmem |= FMEM_Mapped;
+		iMemdesc = (iMemdesc + 1) % cMemdesc;
+	}
+
 	
 	u32 cBBase = max<u32>(1, addrspBase.m_addrMax - addrspBase.m_addrMin);
 	for (u32 addrIt = addrMin; addrIt < addrMax; ++addrIt)
@@ -246,12 +331,21 @@ void MapMirrored(MemoryMap * pMemmp, AddressSpan addrspBase, u32 addrMin, u32 ad
 	}
 }
 
+u8 IMemcbAllocate(MemoryMap * pMemmp, PFnReadMemCallback pFnRead, PFnWriteMemCallback pFnWrite) 
+{
+	u8 iMemcb = U8Coerce(pMemmp->m_aryMemcb.C());
+	auto pMemcb = pMemmp->m_aryMemcb.AppendNew();
+	pMemcb->m_pFnReadmem = pFnRead;
+	pMemcb->m_pFnWritemem = pFnWrite;
+	return iMemcb;
+}
+
 void TestMemoryMap(MemoryMap * pMemmp)
 {
 	// make sure all spans are mapped or unmapped
 	for (u32 addr = 0; addr < kCBAddressable; ++addr)
 	{
-		u8 fmem = pMemmp->m_mpAddrFmem[addr];
+		u8 fmem = pMemmp->m_mpAddrMemdesc[addr].m_fmem;
 		FF_ASSERT(fmem != 0, "unhandled region at %04x. unmapped memory regions must be configured.", addr);
 		if ((fmem & FMEM_Mapped) == 0)
 		{
@@ -362,6 +456,7 @@ void SetPowerUpState(Famicom * pFam, u16 fpow)
 	u16 addrReset = U16ReadMem(pCpu, pMemmp, kAddrReset);
 	pCreg->m_pc = addrReset;
 	pCpu->m_cCycleCpu = 7;
+	pCpu->m_cCycleCpuPrev = 7;
 
 	SetPpuPowerUpState(pFam, fpow);
 }
@@ -576,7 +671,13 @@ FF_FORCE_INLINE void TryBranch(Cpu * pCpu, bool predicate, u16 addrTrue)
 	pCpu->m_creg.m_pc = addrTrue;
 }
 
-FF_FORCE_INLINE void EvalOpAND(Cpu * pCpu, MemoryMap * pMemmp, u16 addr) {FF_ASSERT(false, "TBD"); }
+FF_FORCE_INLINE void EvalOpAND(Cpu * pCpu, MemoryMap * pMemmp, u16 addr)
+{
+	u8 bOpcode = U8ReadMem(pCpu, pMemmp, addr); 
+	pCpu->m_creg.m_a &= bOpcode;
+	SetZeroNegative(&pCpu->m_creg, pCpu->m_creg.m_a);
+}
+
 FF_FORCE_INLINE void EvalOpARR(Cpu * pCpu, MemoryMap * pMemmp, u16 addr) {FF_ASSERT(false, "TBD"); }
 FF_FORCE_INLINE void EvalOpASL(Cpu * pCpu, MemoryMap * pMemmp, u16 addr) {FF_ASSERT(false, "TBD"); }
 FF_FORCE_INLINE void EvalOpAXS(Cpu * pCpu, MemoryMap * pMemmp, u16 addr) {FF_ASSERT(false, "TBD"); }
@@ -759,8 +860,17 @@ FF_FORCE_INLINE void EvalOpLDY(Cpu * pCpu, MemoryMap * pMemmp, u16 addr)
 }
 
 FF_FORCE_INLINE void EvalOpLSR(Cpu * pCpu, MemoryMap * pMemmp, u16 addr) {FF_ASSERT(false, "TBD"); }
-FF_FORCE_INLINE void EvalOpNOP(Cpu * pCpu, MemoryMap * pMemmp, u16 addr) {FF_ASSERT(false, "TBD"); }
-FF_FORCE_INLINE void EvalOpORA(Cpu * pCpu, MemoryMap * pMemmp, u16 addr) {FF_ASSERT(false, "TBD"); }
+FF_FORCE_INLINE void EvalOpNOP(Cpu * pCpu, MemoryMap * pMemmp, u16 addr) 
+{
+}
+
+FF_FORCE_INLINE void EvalOpORA(Cpu * pCpu, MemoryMap * pMemmp, u16 addr) 
+{
+	u8 bOpcode = U8ReadMem(pCpu, pMemmp, addr); 
+	pCpu->m_creg.m_a |= bOpcode;
+	SetZeroNegative(&pCpu->m_creg, pCpu->m_creg.m_a);
+}
+
 FF_FORCE_INLINE void EvalOpPHA(Cpu * pCpu, MemoryMap * pMemmp, u16 addr)
 {
 	PushStack(pCpu, pMemmp, pCpu->m_creg.m_a);
@@ -1048,11 +1158,11 @@ int CChPrintDisassmLine(const Cpu * pCpu, MemoryMap * pMemmp, u16 addr, char * p
 	return cChWritten;
 }
 
-int CChPrintCpuState(const Cpu * pCpu, char * pChz, int cChMax)
+int CChPrintCpuState(const Cpu * pCpu, const Ppu * pPpu, char * pChz, int cChMax)
 {
 	auto pCreg = &pCpu->m_creg;
-	int iCh = sprintf_s(pChz, cChMax, "A:%02X X:%02X Y:%02X P:%02X SP:%02X PPU:???,??? CYC:%I64d", 
-		pCreg->m_a, pCreg->m_x, pCreg->m_y, pCreg->m_p, pCreg->m_sp, pCpu->m_cCycleCpu);
+	int iCh = sprintf_s(pChz, cChMax, "A:%02X X:%02X Y:%02X P:%02X SP:%02X PPU:%3i,%3i CYC:%I64d", 
+		pCreg->m_a, pCreg->m_x, pCreg->m_y, pCreg->m_p, pCreg->m_sp, pPpu->m_iCyclePpuScanline, pPpu->m_iScanline, pCpu->m_cCycleCpu);
 	return iCh;
 }
 
@@ -1073,7 +1183,7 @@ int CChPadText(char * pChz, int cChMax, char chPad, int cChPad)
 	return int(pChzIt - pChz);
 }
 
-void PrintCpuStateForLog(const Cpu * pCpu, MemoryMap * pMemmp, char * pChz, int cChMax)
+void PrintCpuStateForLog(const Cpu * pCpu, const Ppu * pPpu, MemoryMap * pMemmp, char * pChz, int cChMax)
 {
 	// meant to match CPU logs from nintedulator
 
@@ -1091,7 +1201,7 @@ void PrintCpuStateForLog(const Cpu * pCpu, MemoryMap * pMemmp, char * pChz, int 
 	if (cChMax < 0)
 		return;
 
-	(void)CChPrintCpuState(pCpu, pChz, cChMax);
+	(void)CChPrintCpuState(pCpu, pPpu, pChz, cChMax);
 }
 
 
@@ -1180,6 +1290,84 @@ bool FDoLogsMatch(
 	return fMatch;
 }
 
+static const int s_cScanlinesPerFrame = 261;
+static const int s_cScanlinesVisible = 240;
+static const int s_cCyclePpuPerScanline = 341;
+static const int s_iCycleIdleMin = 258;
+
+// Note: this isn't working right now because the spoofed ppu state needs to get set on the cycle that it would happen
+//  ie. in the middle of the cpu instruction evaluation - I'm gonna check it in to document it, then clean it up.
+void SpoofPpu(Famicom * pFam)
+{
+	// set ppu registers to act like we're emulating the PPU
+
+	auto cCycle = pFam->m_cpu.m_cCycleCpu;
+	int dCycle = int(cCycle - pFam->m_cpu.m_cCycleCpuPrev);
+	pFam->m_cpu.m_cCycleCpuPrev = cCycle;
+
+	auto pPpu = &pFam->m_ppu;
+	auto pMemmp = &pFam->m_memmp;
+
+	// With render disabled each PPU frame is 341*262=89342 PPU clocks long.
+	bool fBackgroundEnabled = pMemmp->m_aBRaw[PPUREG_Mask] & 0x8;
+	bool fSpritesEnabled = pMemmp->m_aBRaw[PPUREG_Mask] & 0x10;
+	bool fIsRenderEnabled = fBackgroundEnabled | fSpritesEnabled;
+	bool fIsOddFrame = (pPpu->m_iFrame & 0x1) != 0;
+
+	auto iCyclePpuScanlinePrev = pPpu->m_iCyclePpuScanline;
+	auto iScanlinePrev = pPpu->m_iScanline;
+
+	int iCyclePpuScanline = pPpu->m_iCyclePpuScanline;
+	pPpu->m_iCyclePpuScanline += dCycle * 3;
+
+	if (pPpu->m_iCyclePpuScanline >= s_cCyclePpuPerScanline)
+	{
+		++pPpu->m_iScanline;
+		pPpu->m_iCyclePpuScanline -= s_cCyclePpuPerScanline;
+
+		if (pPpu->m_iScanline >= s_cScanlinesPerFrame)
+		{
+			pPpu->m_iScanline -= s_cScanlinesPerFrame;
+			++pPpu->m_iFrame;
+		}
+	}
+
+	static const int s_iCycleDropped = s_iCycleIdleMin;
+	static const int s_iCycleVBlank = 241 * s_cCyclePpuPerScanline + 1; // vblank happens on the first cycle of the 241st scanline of a frame.
+	int iCyclePpu = pPpu->m_iScanline * s_cCyclePpuPerScanline + pPpu->m_iCyclePpuScanline;
+	int iCyclePpuPrev = iScanlinePrev * s_cCyclePpuPerScanline + iCyclePpuScanlinePrev;
+
+	//if (fIsRenderEnabled && fIsOddFrame && pPpu->m_iScanline == 0 && (s_iCycleIdleMin >= iCyclePpuPrev && s_iCycleIdleMin <= iCyclePpu))
+	if (fIsRenderEnabled && fIsOddFrame && (s_iCycleDropped > iCyclePpuPrev && s_iCycleDropped <= iCyclePpu))
+	{
+		// Odd frames (with rendering enabled) are one cycle shorter - this cycle is dropped from the
+		//  first idle cycle of the  first scanline
+		++pPpu->m_iCyclePpuScanline;
+	}
+
+	if (s_iCycleVBlank > iCyclePpuPrev && s_iCycleVBlank <= iCyclePpu)
+	{
+		pFam->m_memmp.m_aBRaw[PPUREG_Status] |= 0x80;
+	}
+
+	/*
+	static const int s_cCycleVBlank = (241 * 341) / 3;
+	if (((cCycle % s_cCycleVBlank) - dCycle) < 0)
+	{
+		pFam->m_memmp.m_aBRaw[PPUREG_Status] |= 0x80;
+	}	*/
+
+	/*
+	//static const int s_cCycleVBlank1 = 27384;
+	static const int s_cCycleVBlank2 = 57165;
+//	if (cCycle >= s_cCycleVblank1 && cCyclePrev < s_cCycleVblank1)
+	if ((s_cCycleVBlank1 > cCyclePrev && s_cCycleVBlank1 <= cCycle) || 
+		(s_cCycleVBlank1 > cCyclePrev && s_cCycleVBlank1 <= cCycle))
+	{
+		pFam->m_memmp.m_aBRaw[PPUREG_Status] |= 0x80;
+	}*/
+}
+
 bool FTryRunLogTest(const char * pChzFilenameRom, const char * pChzFilenameLog) 
 {
 	Famicom fam;
@@ -1215,7 +1403,7 @@ bool FTryRunLogTest(const char * pChzFilenameRom, const char * pChzFilenameLog)
 	int cStep = 0;
 	while (pBLogIt != pBLogMax)
 	{
-		PrintCpuStateForLog(&fam.m_cpu, &fam.m_memmp, aChState, FF_DIM(aChState));
+		PrintCpuStateForLog(&fam.m_cpu, &fam.m_ppu, &fam.m_memmp, aChState, FF_DIM(aChState));
 		size_t cChAdvance = 0;
 		if (!FDoLogsMatch(aChState, FF_PMAX(aChState), pBLogIt, pBLogMax, &cChAdvance))
 		{
@@ -1231,6 +1419,7 @@ bool FTryRunLogTest(const char * pChzFilenameRom, const char * pChzFilenameLog)
 		pBLogIt += cChAdvance;
 
 		StepCpu(&fam);
+		SpoofPpu(&fam);
 	}
 
 	return fPassTest;

@@ -86,5 +86,15 @@ union OAM	// Object Attribute Memory, aka sprite data
 
 struct Ppu
 {
+			Ppu()
+			:m_iCyclePpuScanline(0)
+			,m_iScanline(0)
+			,m_iFrame(0)
+				{ ; }
+
 	OAM		m_soamSecondary[8];		// internal sprite memory inaccessible to the program; used to cache the sprites rendered in the current scanline. 
+
+	int		m_iCyclePpuScanline;	// Ppu cycles since the start of this scanline
+	int		m_iScanline;
+	int		m_iFrame;
 };

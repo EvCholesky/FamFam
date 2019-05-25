@@ -41,8 +41,22 @@ void MapMemoryCommon(MemoryMap * pMemmp)
 	auto addrspBottom = AddrspMapMemory(pMemmp, 0x0, 0x800);		// bottom 2K
 	MapMirrored(pMemmp, addrspBottom, 0x800, 0x2000);				// mirrors to 8K
 
-	auto addrspPpuReg = AddrspMapMemory(pMemmp, 0x2000, 0x2008);	// PPU registers
-	MapMirrored(pMemmp, addrspPpuReg, 0x2008, 0x4000);				// mirrors to 16k
+	auto iMemcbWriteOnly = IMemcbAllocate(pMemmp, U8PeekWriteOnlyPpuReg, PokePpuReg);
+	auto iMemcbStatus = IMemcbAllocate(pMemmp, U8PeekPpuStatus, PokePpuReg);
+	auto iMemcbReadWrite = IMemcbAllocate(pMemmp, U8PeekPpuStatus, PokePpuReg);
+
+	MemoryDescriptor aMemdesc[] = {
+		MemoryDescriptor(FMEM_None,		iMemcbWriteOnly),	//PPUREG_Ctrl			= 0x2000
+		MemoryDescriptor(FMEM_None,		iMemcbWriteOnly),	//PPUREG_Mask			= 0x2001
+		MemoryDescriptor(FMEM_ReadOnly,	iMemcbStatus),		//PPUREG_Status			= 0x2002
+		MemoryDescriptor(FMEM_None,		iMemcbWriteOnly),	//PPUREG_OAMAddr 		= 0x2003
+		MemoryDescriptor(FMEM_None,		iMemcbReadWrite),	//PPUREG_OAMData 		= 0x2004
+		MemoryDescriptor(FMEM_None,		iMemcbWriteOnly),	//PPUREG_PpuScroll		= 0x2005
+		MemoryDescriptor(FMEM_None,		iMemcbWriteOnly),	//PPUREG_PpuAddr		= 0x2006
+		MemoryDescriptor(FMEM_None,		iMemcbReadWrite),	//PPUREG_PpuData		= 0x2007
+	};
+	auto addrspPpuReg = AddrspMapMemory(pMemmp, 0x2000, 0x2008, aMemdesc, FF_DIM(aMemdesc));	// PPU registers
+	MapMirrored(pMemmp, addrspPpuReg, 0x2008, 0x4000, aMemdesc, FF_DIM(aMemdesc));				// mirrors to 16k
 
 	auto addrspApuIoReg = AddrspMapMemory(pMemmp, 0x4000, 0x4018);	// APU and IO Registers
 	(void)AddrspMarkUnmapped(pMemmp, 0x4018, 0x4020);				// unused APU and IO test space
@@ -53,11 +67,12 @@ bool FTrySetupMapperNrom(MemoryMap* pMemmp, Cart* pCart)
 	MapMemoryCommon(pMemmp);
 	(void)AddrspMarkUnmapped(pMemmp, 0x4020, 0x8000);
 	
+	MemoryDescriptor memdescReadOnly(FMEM_ReadOnly);
 	switch (pCart->m_cBPrgRom)
 	{
 	case FF_KIB(16):
 		{
-			auto addrspPrg = AddrspMapMemory(pMemmp, 0x8000, 0xC000, FMEM_ReadOnly);
+			auto addrspPrg = AddrspMapMemory(pMemmp, 0x8000, 0xC000, &memdescReadOnly);
 			MapMirrored(pMemmp, addrspPrg, 0xC000, 0x10000);
 			CopyAB(pCart->m_pBPrgRom, &pMemmp->m_aBRaw[0x8000], FF_KIB(16));
 
@@ -69,7 +84,7 @@ bool FTrySetupMapperNrom(MemoryMap* pMemmp, Cart* pCart)
 		}break;
 	case FF_KIB(32):
 		{
-			(void)AddrspMapMemory(pMemmp, 0x8000, 0x10000, FMEM_ReadOnly);
+			(void)AddrspMapMemory(pMemmp, 0x8000, 0x10000, &memdescReadOnly);
 			CopyAB(pCart->m_pBPrgRom, &pMemmp->m_aBRaw[0x8000], FF_KIB(32));
 
 			AppendAddrOffset(&pCart->m_aryAddrInstruct, 0x8000, pCart->m_pBPrgRom, pCart->m_cBPrgRom);
@@ -107,8 +122,9 @@ bool FTrySetupMapperMmc1(MemoryMap* pMemmp, Cart* pCart)
 	// * Some tests have found (citation needed) that the power on behavior has the last 32k
 	// mapped at 0x8000..0xFFFF
 
-	auto addrspPrg0 = AddrspMapMemory(pMemmp, 0x6000, FF_KIB(8), FMEM_ReadOnly);
-	auto addrspPrg1 = AddrspMapMemory(pMemmp, 0x6000, FF_KIB(8), FMEM_ReadOnly);
+	MemoryDescriptor memdescReadOnly(FMEM_ReadOnly);
+	auto addrspPrg0 = AddrspMapMemory(pMemmp, 0x6000, FF_KIB(8), &memdescReadOnly);
+	auto addrspPrg1 = AddrspMapMemory(pMemmp, 0x6000, FF_KIB(8), &memdescReadOnly);
 	TestMemoryMap(pMemmp);
 	return true;
 }
