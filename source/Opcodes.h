@@ -107,8 +107,8 @@
 		OPCODE(DCP, Illegal, "ILLEGAL: ") \
 		OPCODE(ISC, Illegal, "ILLEGAL: ") \
 		OPCODE(KIL, Illegal, "ILLEGAL: Kill Proccess") \
-		OPCODE(LAX, Illegal, "ILLEGAL: ") \
 		OPCODE(LAS, Illegal, "ILLEGAL: ") \
+		OPCODE(LAX, Illegal, "ILLEGAL: ") \
 		OPCODE(RLA, Illegal, "ILLEGAL: ") \
 		OPCODE(RRA, Illegal, "ILLEGAL: ") \
 		OPCODE(SAX, Illegal, "ILLEGAL: Store A & X") \

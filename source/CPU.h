@@ -24,38 +24,42 @@ enum FCPU : u8
 	FCPU_Negative			= 0x80,
 };
 
-struct CpuRegister // tag = creg
+struct Cpu // tag = cpu
 {
-					CpuRegister()
+					Cpu()
 					:m_a(0)
 					,m_x(0)
 					,m_y(0)
 					,m_p(FCPU_None)
 					,m_sp(0)
 					,m_pc(0)
+					,m_cCycleCpu(0)
 						{ ; }
 
 	u8				m_a;
 	u8				m_x;
 	u8				m_y;
-	u8				m_p;	// flags 
-	u8				m_sp;	// stack register
-	u16				m_pc;	// program counter
-};
-
-struct Cpu // tag = cpu
-{
-					Cpu()
-					:m_cCycleCpu(0)
-					,m_cCycleCpuPrev(0)
-						{ ; }
-
-	CpuRegister		m_creg;
-	CpuRegister		m_cregPrev;
+	u8				m_p;				// flags 
+	u8				m_sp;				// stack register
+	u16				m_pc;				// program counter
 
 	s64				m_cCycleCpu;		// count of cycles elapsed this frame 		
 										// 1 cpu cycle == 3 Ppu cycle
-	s64				m_cCycleCpuPrev;	// last cpu cycle used to spoof the PPu
+};
+
+struct PpuTiming // tag = ptim
+{
+					PpuTiming()
+					:m_cPclockScanline(0)
+					,m_cScanline(0)
+					,m_cFrame(0)
+					,m_cCycleCpuPrev(0)
+						{ ; }
+
+	u16				m_cPclockScanline;	// Ppu cycles since the start of the scanline
+	u16				m_cScanline;		// Scanlines since the start of the frame
+	int				m_cFrame;			// Total frames since power up
+	s64				m_cCycleCpuPrev;	// count of cycles elapsed since the last ppu update
 };
 
 enum MEMSP : u16 // MEMory SPan
@@ -173,17 +177,19 @@ void TestMemoryMap(MemoryMap * pMemmp);
 void VerifyPrgRom(MemoryMap * pMemmp, u8 * pBPrgRom, u32 addrMin, u32 addrMax);
 
 u8 U8PeekMem(MemoryMap * pMemmp, u16 addr); // return an address value without the machine emulating a memory read
-u8 U8ReadMem(Cpu * pCpu, MemoryMap * pMemmp, u16 addr);
-u16 U16ReadMem(Cpu * pCpu, MemoryMap * pMemmp, u16 addr);
+u8 U8ReadMem(Famicom * pFam, u16 addr);
+u16 U16ReadMem(Famicom * pFam, u16 addr);
 
 void PokeMemU8(MemoryMap * pMemmp, u16 addr, u8 b);
-void WriteMemU8(Cpu * pCpu, MemoryMap * pMemmp, u16 addr, u8 b);
-void WriteMemU16(Cpu * pCpu, MemoryMap * pMemmp, u16 addr, u16 n);
+void WriteMemU8(Famicom * pFam, u16 addr, u8 b);
+void WriteMemU16(Famicom * pFam, u16 addr, u16 n);
 
 u8 U8PeekWriteOnlyPpuReg(MemoryMap * pMemmp, u16 addr);
 u8 U8PeekPpuStatus(MemoryMap * pMemmp, u16 addr);
 u8 U8PeekPpuReg(MemoryMap * pMemmp, u16 addr);
 void PokePpuReg(MemoryMap * pMemmp, u16 addr, u8 b);
+
+void AdvancePpuTiming(PpuTiming * pPtim, s64 cCycleCpu, MemoryMap * pMemmp);
 
 enum MODELK
 {
@@ -197,33 +203,38 @@ struct Model // tag = model
 
 struct Famicom // tag = fam
 {
-				Famicom()
-				:m_pModel(nullptr)
-				,m_pCart(nullptr)
-					{ ; }
+					Famicom()
+					:m_pModel(nullptr)
+					,m_pCart(nullptr)
+						{ ; }
 
-	Cpu  		m_cpu;
-	Ppu  		m_ppu;
-	Model * 	m_pModel;
-	Cart *		m_pCart;
-	MemoryMap 	m_memmp;
+	Cpu  			m_cpu;
+	Cpu				m_cpuPrev;
+	PpuTiming		m_ptimCpu;
+	Ppu				m_ppu;
+	Model *			m_pModel;
+	Cart *			m_pCart;
+	MemoryMap 		m_memmp;
 };
 
-inline u8 U8ReadMem(Cpu * pCpu, MemoryMap * pMemmp, u16 addr)
+// advance one cpu clock cycle
+inline void TickCpu(Famicom * pFam)
 {
-	u8 b = U8PeekMem(pMemmp, addr);
-	pMemmp->m_bPrevBus = b;
-	++pCpu->m_cCycleCpu;
-	return b;
-}
-inline u8 U8ReadMem(Famicom * pFam, u16 addr)
-{
-	return U8ReadMem(&pFam->m_cpu, &pFam->m_memmp, addr);
+	++pFam->m_cpu.m_cCycleCpu;
+	AdvancePpuTiming(&pFam->m_ptimCpu, pFam->m_cpu.m_cCycleCpu, &pFam->m_memmp);
 }
 
-inline u16 U16ReadMem(Cpu * pCpu, MemoryMap * pMemmp, u16 addr)
+inline u8 U8ReadMem(Famicom * pFam, u16 addr)
 {
-	u16 n = U8ReadMem(pCpu, pMemmp, addr) | (u16(U8ReadMem(pCpu, pMemmp, addr+1)) << 8);
+	u8 b = U8PeekMem(&pFam->m_memmp, addr);
+	pFam->m_memmp.m_bPrevBus = b;
+	TickCpu(pFam);
+	return b;
+}
+
+inline u16 U16ReadMem(Famicom * pFam, u16 addr)
+{
+	u16 n = U8ReadMem(pFam, addr) | (u16(U8ReadMem(pFam, addr+1)) << 8);
 	return n;
 }
 
@@ -233,16 +244,16 @@ inline u16 U16PeekMem(MemoryMap * pMemmp, u16 addr)
 	return n;
 }
 
-inline void WriteMemU8(Cpu * pCpu, MemoryMap * pMemmp, u16 addr, u8 b)
+inline void WriteMemU8(Famicom * pFam, u16 addr, u8 b)
 {
-	PokeMemU8(pMemmp, addr, b);
-	++pCpu->m_cCycleCpu;
+	PokeMemU8(&pFam->m_memmp, addr, b);
+	TickCpu(pFam);
 }
 
-inline void WriteMemU16(Cpu * pCpu, MemoryMap * pMemmp, u16 addr, u16 n)
+inline void WriteMemU16(Famicom * pFam, u16 addr, u16 n)
 {
-	WriteMemU8(pCpu, pMemmp, addr, u8(n));
-	WriteMemU8(pCpu, pMemmp, addr+1, u8(n >> 8));
+	WriteMemU8(pFam, addr, u8(n));
+	WriteMemU8(pFam, addr+1, u8(n >> 8));
 }
 
 #define INFO(AM, DESC) AMOD_##AM,

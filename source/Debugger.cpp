@@ -410,15 +410,16 @@ void UpdateRegisterWindow(Famicom * pFam, bool * pFShowWindow)
     }
 
 	Cpu * pCpu = &pFam->m_cpu;
-	UpdateFlagsString("no_bdizc", pCpu->m_creg.m_p, pCpu->m_cregPrev.m_p);
+	Cpu * pCpuPrev = &pFam->m_cpu;
+	UpdateFlagsString("no_bdizc", pCpu->m_p, pCpuPrev->m_p);
 
 	ImGui::Columns(3, "regCol", false);  // 3-ways, no border
 
-	FInputRegister8("A", &pCpu->m_creg.m_a, pCpu->m_cregPrev.m_a);
-	FInputRegister8("X", &pCpu->m_creg.m_x, pCpu->m_cregPrev.m_x);
-	FInputRegister8("Y", &pCpu->m_creg.m_y, pCpu->m_cregPrev.m_y);
-	FInputRegister8("SP", &pCpu->m_creg.m_sp, pCpu->m_cregPrev.m_sp);
-	FInputRegister16("PC", &pCpu->m_creg.m_pc, pCpu->m_cregPrev.m_pc);
+	FInputRegister8("A", &pCpu->m_a, pCpuPrev->m_a);
+	FInputRegister8("X", &pCpu->m_x, pCpuPrev->m_x);
+	FInputRegister8("Y", &pCpu->m_y, pCpuPrev->m_y);
+	FInputRegister8("SP", &pCpu->m_sp, pCpuPrev->m_sp);
+	FInputRegister16("PC", &pCpu->m_pc, pCpuPrev->m_pc);
 
     ImGui::End();
 }

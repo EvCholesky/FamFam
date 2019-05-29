@@ -26,7 +26,7 @@ int main(int cpChzArg, const char * apChzArg[])
 			return 0;
 		}
 
-		u16 addrStartup = U16ReadMem(&g_fam.m_cpu, &g_fam.m_memmp, kAddrReset);
+		u16 addrStartup = U16PeekMem(&g_fam.m_memmp, kAddrReset);
 		printf("loaded '%s'   reset vector = %x\n", apChzArg[1], addrStartup);
 	}
 
