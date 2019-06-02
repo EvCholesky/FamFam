@@ -74,13 +74,15 @@ const OpkInfo * POpkinfoFromOPK(OPK opk)
 
 const OpInfo * POpinfoFromOpcode(u8 nOpcode)
 {
-#define OP(NAME, OPKIND, ADDR, CYCLE) {#OPKIND, OPK_##OPKIND, AMRW_##ADDR, U8Coerce(abs(CYCLE)), CYCLE < 0},
-#define OPA(NAME, OPKIND, ADDR, CYCLE) {#OPKIND, OPK_##OPKIND, AMRW_##ADDR, U8Coerce(abs(CYCLE)), CYCLE < 0},
+#define OP(NAME, OPKIND, ADDR, CYCLE) {#OPKIND, OPK_##OPKIND, AMRW_##ADDR, 0x##NAME, S8Coerce(abs(CYCLE)), true, CYCLE < 0},
+#define IL(NAME, OPKIND, ADDR, CYCLE) {#OPKIND, OPK_##OPKIND, AMRW_##ADDR, 0x##NAME, S8Coerce(abs(CYCLE)), false, CYCLE < 0},
+#define OPA(NAME, OPKIND, ADDR, CYCLE) {#OPKIND, OPK_##OPKIND, AMRW_##ADDR, 0x##NAME, S8Coerce(abs(CYCLE)), true, CYCLE < 0},
 	static const OpInfo s_mpOpcodeOpinfo[] =
 	{
 		OPCODE_TABLE
 	};
 #undef OPA
+#undef IL
 #undef OP
 
 	return &s_mpOpcodeOpinfo[nOpcode];
@@ -387,7 +389,7 @@ void DumpAsm(Famicom * pFam, u16 addrMin, int cB)
 			default: FF_ASSERT(false, "unexpected opcode size");
 		}
 
-		printf("%s%s ", (pOpkinfo->m_opcat == OPCAT_Illegal) ? "  " : "!!", pOpinfo->m_pChzMnemonic);
+		printf("%s%s ", (pOpinfo->m_fIsOfficial) ? "  " : "!!", pOpinfo->m_pChzMnemonic);
 
 		switch(pAmodinfo->m_amod)
 		{
@@ -561,18 +563,20 @@ FF_FORCE_INLINE u16 NEvalAdrwIND(Famicom * pFam)
 	u8 nHigh = U8ReadMem(pFam, pFam->m_cpu.m_pc++); 
 	u16 addr = u16(nLow) | (u16(nHigh) << 8);
 
+	u16 addrHigh = addr & 0xFF00;
 	nLow = U8ReadMem(pFam, addr); 
-	nHigh = U8ReadMem(pFam, addr+1);
+	nHigh = U8ReadMem(pFam, addrHigh | ((addr+1) & 0xFF));
 	return u16(nLow) | (u16(nHigh) << 8);
 }
 
 FF_FORCE_INLINE u16 NEvalAdrwIXR(Famicom * pFam)
 {
 	u16 addr = U8ReadMem(pFam, pFam->m_cpu.m_pc++); 
+	TickCpu(pFam);
 	addr = (addr + pFam->m_cpu.m_x) & 0x00FF;
 
-	u8 nLow = U8ReadMem(pFam, addr++); 
-	u8 nHigh = U8ReadMem(pFam, addr); 
+	u8 nLow = U8ReadMem(pFam, addr); 
+	u8 nHigh = U8ReadMem(pFam, (addr + 1) & 0xFF); 
 	return u16(nLow) | (u16(nHigh) << 8);
 }
 
@@ -580,19 +584,22 @@ FF_FORCE_INLINE u16 NEvalAdrwIYR(Famicom * pFam)
 {
 	u16 addr = U8ReadMem(pFam, pFam->m_cpu.m_pc++); 
 
-	u8 nLow = U8ReadMem(pFam, addr++); 
-	u8 nHigh = U8ReadMem(pFam, addr); 
-	return (u16(nLow) | (u16(nHigh) << 8)) + pFam->m_cpu.m_y;
+	u8 nLow = U8ReadMem(pFam, addr); 
+	u8 nHigh = U8ReadMem(pFam, (addr + 1) & 0xFF); 
+	u16 addrBase = (u16(nLow) | (u16(nHigh) << 8));
+	u16 addrIndex = addrBase + pFam->m_cpu.m_y;
+	AddCycleForPageBoundary(pFam, addrBase, addrIndex); 
+	return addrIndex;
 }
 
 FF_FORCE_INLINE u16 NEvalAdrwIXW(Famicom * pFam)
 {
 	u16 addr = U8ReadMem(pFam, pFam->m_cpu.m_pc++); 
+	TickCpu(pFam);
 	addr = (addr + pFam->m_cpu.m_x) & 0x00FF;
 
-	u8 nLow = U8ReadMem(pFam, addr++); 
-	u8 nHigh = U8ReadMem(pFam, addr); 
-	TickCpu(pFam);
+	u8 nLow = U8ReadMem(pFam, addr); 
+	u8 nHigh = U8ReadMem(pFam, (addr + 1) & 0xFF); 
 	return u16(nLow) | (u16(nHigh) << 8);
 }
 
@@ -600,8 +607,8 @@ FF_FORCE_INLINE u16 NEvalAdrwIYW(Famicom * pFam)
 {
 	u16 addr = U8ReadMem(pFam, pFam->m_cpu.m_pc++); 
 
-	u8 nLow = U8ReadMem(pFam, addr++); 
-	u8 nHigh = U8ReadMem(pFam, addr); 
+	u8 nLow = U8ReadMem(pFam, addr); 
+	u8 nHigh = U8ReadMem(pFam, (addr + 1) & 0xFF); 
 	TickCpu(pFam);
 	return (u16(nLow) | (u16(nHigh) << 8)) + pFam->m_cpu.m_y;
 }
@@ -631,27 +638,6 @@ FF_FORCE_INLINE u16 NEvalAdrwZPY(Famicom * pFam)
 	TickCpu(pFam);
 	return (n + pFam->m_cpu.m_y) & 0xFF;
 }
-
-// illegal ops
-FF_FORCE_INLINE void EvalOpAHX(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
-FF_FORCE_INLINE void EvalOpALR(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
-FF_FORCE_INLINE void EvalOpANC(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
-FF_FORCE_INLINE void EvalOpARR(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
-FF_FORCE_INLINE void EvalOpAXS(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
-FF_FORCE_INLINE void EvalOpDCP(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
-FF_FORCE_INLINE void EvalOpISC(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
-FF_FORCE_INLINE void EvalOpKIL(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
-FF_FORCE_INLINE void EvalOpLAS(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
-FF_FORCE_INLINE void EvalOpLAX(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
-FF_FORCE_INLINE void EvalOpRLA(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
-FF_FORCE_INLINE void EvalOpRRA(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
-FF_FORCE_INLINE void EvalOpSAX(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
-FF_FORCE_INLINE void EvalOpSHX(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
-FF_FORCE_INLINE void EvalOpSHY(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
-FF_FORCE_INLINE void EvalOpSLO(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
-FF_FORCE_INLINE void EvalOpSRE(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
-FF_FORCE_INLINE void EvalOpTAS(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
-FF_FORCE_INLINE void EvalOpXAA(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
 
 
 
@@ -763,7 +749,7 @@ FF_FORCE_INLINE void EvalOpBCS(Famicom * pFam, u16 addr)
 
 FF_FORCE_INLINE void EvalOpBEQ(Famicom * pFam, u16 addr)
 {
-	TryBranch(pFam, (pFam->m_cpu.m_p & FCPU_Carry) != 0, addr);
+	TryBranch(pFam, (pFam->m_cpu.m_p & FCPU_Zero) != 0, addr);
 }
 
 FF_FORCE_INLINE void EvalOpBIT(Famicom * pFam, u16 addr)
@@ -771,7 +757,7 @@ FF_FORCE_INLINE void EvalOpBIT(Famicom * pFam, u16 addr)
 	u8 b = U8ReadMem(pFam, addr);
 	u8 * pP = &pFam->m_cpu.m_p;
 	*pP &= ~(FCPU_Overflow | FCPU_Negative | FCPU_Zero);
-	*pP |= (b & pFam->m_cpu.m_a & b) ? 0 : FCPU_Zero;
+	*pP |= (b & pFam->m_cpu.m_a) ? 0 : FCPU_Zero;
 	*pP |= (b & FCPU_Overflow) ? FCPU_Overflow : 0;
 	*pP |= (b & FCPU_Negative) ? FCPU_Negative : 0;
 }
@@ -967,7 +953,6 @@ FF_FORCE_INLINE void EvalOpLSR_ACC(Famicom * pFam, u16 addr)
 	pFam->m_cpu.m_p |= pFam->m_cpu.m_a & FCPU_Carry;
 	pFam->m_cpu.m_a = pFam->m_cpu.m_a >> 1;
 	pFam->m_cpu.m_p |= (pFam->m_cpu.m_a == 0) ? FCPU_Zero : 0;
-	WriteMemU8(pFam, addr, pFam->m_cpu.m_a);
 }
 
 FF_FORCE_INLINE void EvalOpLSR(Famicom * pFam, u16 addr) 
@@ -1030,6 +1015,7 @@ FF_FORCE_INLINE void EvalOpPLP(Famicom * pFam, u16 addr)
 
 FF_FORCE_INLINE void EvalOpROL_ACC(Famicom * pFam, u16 addr)
 {
+	TickCpu(pFam);
 	static_assert(FCPU_Carry == 0x1, "expected carry to be bit zero");
 	u8 bA = pFam->m_cpu.m_a;
 	u8 bCarry = (pFam->m_cpu.m_p & FCPU_Carry);
@@ -1120,7 +1106,6 @@ FF_FORCE_INLINE void EvalOpTXA(Famicom * pFam, u16 addr)
 FF_FORCE_INLINE void EvalOpTXS(Famicom * pFam, u16 addr)
 {
 	pFam->m_cpu.m_sp = pFam->m_cpu.m_x;
-	SetZeroNegative(&pFam->m_cpu, pFam->m_cpu.m_x);
 	TickCpu(pFam);
 }
 
@@ -1179,6 +1164,158 @@ FF_FORCE_INLINE void EvalOpRTS(Famicom * pFam, u16 addr)
 	(void)U8ReadMem(pFam, pFam->m_cpu.m_pc++);
 }
 
+// unofficial ops
+FF_FORCE_INLINE void EvalOpAHX(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
+FF_FORCE_INLINE void EvalOpALR(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
+FF_FORCE_INLINE void EvalOpANC(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
+FF_FORCE_INLINE void EvalOpARR(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
+FF_FORCE_INLINE void EvalOpAXS(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
+FF_FORCE_INLINE void EvalOpDCP(Famicom * pFam, u16 addr)
+{
+	// dec
+	u8 b = U8ReadMem(pFam, addr);
+	WriteMemU8(pFam, addr, b);
+	WriteMemU8(pFam, addr, --b);
+
+	// cmp
+	//u8 b = u8(U8ReadMem(pFam, addr));
+	u8 dB = u8(pFam->m_cpu.m_a) - b;
+
+	SetZeroNegative(&pFam->m_cpu, dB);
+	pFam->m_cpu.m_p &= ~FCPU_Carry;
+	pFam->m_cpu.m_p |= (pFam->m_cpu.m_a >= b) ? FCPU_Carry : FCPU_None;
+}
+
+FF_FORCE_INLINE void EvalOpISB(Famicom * pFam, u16 addr)
+{
+	// inc
+	u8 b = U8ReadMem(pFam, addr);
+	WriteMemU8(pFam, addr, b);
+	WriteMemU8(pFam, addr, ++b);
+	SetZeroNegative(&pFam->m_cpu, b);
+
+	// sbc
+	s16 nDif = pFam->m_cpu.m_a - b - (1 - NCarry(FCPU(pFam->m_cpu.m_p)));
+
+	pFam->m_cpu.m_p &= ~(FCPU_Carry | FCPU_Overflow);
+	pFam->m_cpu.m_p |= (nDif & 0xFF00) ? 0 : FCPU_Carry;  // carry is set if result is outside 0..255
+	pFam->m_cpu.m_p |= ((( pFam->m_cpu.m_a ^ b ) & ( pFam->m_cpu.m_a ^ nDif )) & 0x80 ) ? FCPU_Overflow : 0;  // did the sign bit change?
+	SetZeroNegative(&pFam->m_cpu, u8(nDif));
+
+	pFam->m_cpu.m_a = u8(nDif);
+}
+
+FF_FORCE_INLINE void EvalOpKIL(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
+FF_FORCE_INLINE void EvalOpLAS(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
+FF_FORCE_INLINE void EvalOpLAX(Famicom * pFam, u16 addr)
+{
+	// LDA imm
+	//pFam->m_cpu.m_a = U8ReadMem(pFam, pFam->m_cpu.m_pc);
+	pFam->m_cpu.m_a = U8ReadMem(pFam, addr);
+
+	// TAX
+	pFam->m_cpu.m_x = pFam->m_cpu.m_a;
+	SetZeroNegative(&pFam->m_cpu, pFam->m_cpu.m_a);
+}
+
+FF_FORCE_INLINE void EvalOpRLA(Famicom * pFam, u16 addr)
+{
+	//ROL
+	u8 b = U8ReadMem(pFam, addr);
+	WriteMemU8(pFam, addr, b);
+
+	static_assert(FCPU_Carry == 0x1, "expected carry to be bit zero");
+	u8 bCarry = (pFam->m_cpu.m_p & FCPU_Carry);
+
+	pFam->m_cpu.m_p &= ~(FCPU_Carry);
+	pFam->m_cpu.m_p |= ((b & 0x80) != 0) ? FCPU_Carry : 0;
+
+	b = (b << 1) | bCarry;
+	WriteMemU8(pFam, addr, b);
+
+	//AND
+	pFam->m_cpu.m_a &= b;
+	SetZeroNegative(&pFam->m_cpu, pFam->m_cpu.m_a);
+}
+
+FF_FORCE_INLINE void EvalOpRRA(Famicom * pFam, u16 addr)
+{
+	//ROR
+	u8 b = U8ReadMem(pFam, addr);
+	WriteMemU8(pFam, addr, b);
+
+	static_assert(FCPU_Carry == 0x1, "expected carry to be bit zero");
+	u8 bCarry = (pFam->m_cpu.m_p & FCPU_Carry);
+
+	pFam->m_cpu.m_p &= ~(FCPU_Carry);
+	pFam->m_cpu.m_p |= (b & FCPU_Carry);
+	b = (b >> 1) | (bCarry << 7);
+	WriteMemU8(pFam, addr, b);
+
+	//ADC
+	s16 nSum = pFam->m_cpu.m_a + b + NCarry(FCPU(pFam->m_cpu.m_p));
+
+	pFam->m_cpu.m_p &= ~(FCPU_Carry | FCPU_Overflow);
+	pFam->m_cpu.m_p |= (nSum & 0xFF00) ? FCPU_Carry : 0;
+	pFam->m_cpu.m_p |= ((( pFam->m_cpu.m_a ^ nSum ) & ( b ^ nSum )) & 0x80 ) ? FCPU_Overflow : 0;	// did the sign bit change?
+	SetZeroNegative(&pFam->m_cpu, u8(nSum));
+
+	pFam->m_cpu.m_a = u8(nSum);
+}
+
+FF_FORCE_INLINE void EvalOpSAX(Famicom * pFam, u16 addr)
+{
+	WriteMemU8(pFam, addr, pFam->m_cpu.m_a & pFam->m_cpu.m_x);
+}
+
+FF_FORCE_INLINE void EvalOpSHX(Famicom * pFam, u16 addr)
+{
+	u16 addrHigh = addr & 0xFF00;
+	WriteMemU8(pFam, addr, pFam->m_cpu.m_x & addrHigh);
+}
+
+FF_FORCE_INLINE void EvalOpSHY(Famicom * pFam, u16 addr)
+{
+	u16 addrHigh = addr & 0xFF00;
+	WriteMemU8(pFam, addr, pFam->m_cpu.m_y & addrHigh);
+}
+
+FF_FORCE_INLINE void EvalOpSLO(Famicom * pFam, u16 addr) 
+{
+	//ASL
+	u8 b = U8ReadMem(pFam, addr);
+	WriteMemU8(pFam, addr, b);
+	pFam->m_cpu.m_p &= ~FCPU_Carry;
+	pFam->m_cpu.m_p |= ((b & 0x80) != 0) ? FCPU_Carry : 0;
+	b = b << 1;
+	WriteMemU8(pFam, addr, b);
+
+	//ORA
+	//u8 bOpcode = U8ReadMem(pFam, addr); 
+	pFam->m_cpu.m_a |= b;
+	SetZeroNegative(&pFam->m_cpu, pFam->m_cpu.m_a);
+}
+
+FF_FORCE_INLINE void EvalOpSRE(Famicom * pFam, u16 addr)
+{
+	//LSR
+	u8 b = U8ReadMem(pFam, addr);
+	WriteMemU8(pFam, addr, b);
+
+	pFam->m_cpu.m_p &= ~FCPU_Carry;
+	static_assert(FCPU_Carry == 0x1, "expected carry to be bit 0");
+	pFam->m_cpu.m_p |= b & FCPU_Carry;
+	b = b >> 1;
+	WriteMemU8(pFam, addr, b);
+
+	//EOr
+	pFam->m_cpu.m_a ^= b;
+	SetZeroNegative(&pFam->m_cpu, pFam->m_cpu.m_a);
+}
+
+FF_FORCE_INLINE void EvalOpTAS(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
+FF_FORCE_INLINE void EvalOpXAA(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
+
 void StepCpu(Famicom * pFam)
 {
 	auto pCpu = &pFam->m_cpu;
@@ -1186,12 +1323,14 @@ void StepCpu(Famicom * pFam)
 	u8 bOpcode = U8ReadMem(pFam, pCpu->m_pc++);
 
 #define OP(NAME, OPKIND, ADRW, CYCLE) case 0x##NAME: { u16 addr = NEvalAdrw##ADRW(pFam); EvalOp##OPKIND(pFam, addr); } break;
+#define IL(NAME, OPKIND, ADRW, CYCLE) case 0x##NAME: { u16 addr = NEvalAdrw##ADRW(pFam); EvalOp##OPKIND(pFam, addr); } break;
 #define OPA(NAME, OPKIND, ADRW, CYCLE) case 0x##NAME: { u16 addr = NEvalAdrw##ADRW(pFam); EvalOp##OPKIND##_ACC(pFam, addr); } break;
 	switch (bOpcode)
 	{
 		OPCODE_TABLE
 	}
 #undef OPA
+#undef IL
 #undef OP
 }
 
@@ -1238,7 +1377,7 @@ int CChPrintDisassmLine(const Cpu * pCpu, MemoryMap * pMemmp, u16 addr, char * p
 	if (cChMax == 0)
 		return cChWritten;
 
-	char ch = (pOpkinfo->m_opcat == OPCAT_Illegal || pOpkinfo->m_opcat == OPCAT_Nop) ? '*' : ' ';
+	char ch = (pOpinfo->m_fIsOfficial) ? ' ' : '*';
 	int cChOp = sprintf_s(pChz, cChMax, "%c%s ", ch, pOpinfo->m_pChzMnemonic);
 
 	cChWritten += cChOp;
@@ -1312,30 +1451,32 @@ int CChPrintDisassmLine(const Cpu * pCpu, MemoryMap * pMemmp, u16 addr, char * p
 			} break;
 		case AMOD_Indirect:
 			{
-				u8 nLow = U8PeekMem(pMemmp, aB[1]); 
-				u8 nHigh = U8PeekMem(pMemmp, aB[2]);
-				u16 addr = u16(nLow) | (u16(nHigh) << 8);
+				u16 addrHigh = u16(aB[2]) << 8;
+				u16 addrBase = u16(aB[1]) | addrHigh;
 
-				u16 addrIndirect = U8PeekMemNintendulator(pMemmp, addr);
-				cChWritten += sprintf_s(pChz, cChMax, "($%04X) = %04X", addr, addrIndirect);	
+				u8 nLow = U8PeekMem(pMemmp, addrBase); 
+				u8 nHigh = U8PeekMem(pMemmp, addrHigh | ((addrBase+1) & 0xFF));
+				u16 addrInd = u16(nLow) | (u16(nHigh) << 8);
+
+				cChWritten += sprintf_s(pChz, cChMax, "($%04X) = %04X", addrBase, addrInd);	
 			} break;
 		case AMOD_IndirectX: 
 			{
 				u16 addrMid = (aB[1] + pCpu->m_x) & 0x00FF;
-				u16 addrEffective = U16PeekMem(pMemmp, addrMid);
-				u8 nPeek = U8PeekMemNintendulator(pMemmp, addr);
+				u16 addrEffective = U8PeekMem(pMemmp, addrMid);
+
+				addrEffective |= U8PeekMem(pMemmp, (addrMid + 1) & 0xFF) << 0x8;
+				u8 nPeek = U8PeekMemNintendulator(pMemmp, addrEffective);
 			
 				cChWritten += sprintf_s(pChz, cChMax, "($%02X,X) @ %02X = %04X = %02X", aB[1], addrMid, addrEffective, nPeek);
 			} break;
 		case AMOD_IndirectY:
 			{
 				u16 addrMid = U8PeekMem(pMemmp, aB[1]); 
+				addrMid |= U8PeekMem(pMemmp, u16(aB[1] + 1) &0xff) << 8;
 
-				u8 nLow = U8PeekMem(pMemmp, addrMid); 
-				u8 nHigh = U8PeekMem(pMemmp, addrMid+1); 
-
-				u16 addrEffective = (u16(nLow) | (u16(nHigh) << 8)) + pCpu->m_y;
-				u8 nPeek = U8PeekMemNintendulator(pMemmp, addr);
+				u16 addrEffective = addrMid + pCpu->m_y;
+				u8 nPeek = U8PeekMemNintendulator(pMemmp, addrEffective);
 
 				cChWritten += sprintf_s(pChz, cChMax, "($%02X),Y = %04X @ %04X = %02X", aB[1], addrMid, addrEffective, nPeek);
 			} break;
@@ -1483,7 +1624,7 @@ bool FDoLogsMatch(
 static const int s_cScanlinesPerFrame = 262;
 static const int s_cScanlinesVisible = 240;
 static const int s_cPclockPerScanline = 341;
-static const int s_iCycleIdleMin = 258;
+static const int s_iCycleIdleMin = 0;
 
 // return ppu clock cycles (1 CPU cycle == 3 pclocs)
 static inline int CPclockThisFrame(PpuTiming * pTim)
@@ -1502,6 +1643,7 @@ void AdvancePpuTiming(PpuTiming * pPtim, s64 cCycleCpu, MemoryMap * pMemmp)
 	bool fIsOddFrame = (pPtim->m_cFrame & 0x1) != 0;
 
 	int cPclockPrev = CPclockThisFrame(pPtim);
+	int cFramPRev = pPtim->m_cFrame;
 
 	pPtim->m_cPclockScanline += dCycle * 3;
 	if (pPtim->m_cPclockScanline >= s_cPclockPerScanline)
@@ -1518,18 +1660,23 @@ void AdvancePpuTiming(PpuTiming * pPtim, s64 cCycleCpu, MemoryMap * pMemmp)
 
 	int cPclock = CPclockThisFrame(pPtim);
 
-	static const int s_pclockDropped = s_iCycleIdleMin;
-	static const int s_pclockVBlank = 241 * s_cPclockPerScanline + 1; // vblank happens on the first cycle of the 241st scanline of a frame.
-	if (fIsRenderEnabled && fIsOddFrame && (s_pclockDropped > cPclockPrev && s_pclockDropped <= cPclock))
+	static const int s_pclockVBlankSet = 241 * s_cPclockPerScanline + 1; // vblank happens on the first cycle of the 241st scanline of a frame.
+	static const int s_pclockStatusClear = 261 * s_cPclockPerScanline + 1; // vblank is cleared  on the first cycle of the prerender scanline.
+//	if (fIsRenderEnabled && fIsOddFrame && (s_iCycleIdleMin > cPclockPrev && s_iCycleIdleMin <= cPclock))
+	if (fIsRenderEnabled && fIsOddFrame && cFramPRev != pPtim->m_cFrame)
 	{
 		// Odd frames (with rendering enabled) are one cycle shorter - this cycle is dropped from the
 		//  first idle cycle of the  first scanline
 		++pPtim->m_cPclockScanline;
 	}
 
-	if (s_pclockVBlank > cPclockPrev && s_pclockVBlank <= cPclock)
+	if (s_pclockVBlankSet > cPclockPrev && s_pclockVBlankSet <= cPclock)
 	{
 		pMemmp->m_aBRaw[PPUREG_Status] |= 0x80;
+	}
+	else if (s_pclockStatusClear > cPclockPrev && s_pclockStatusClear <= cPclock)
+	{
+		pMemmp->m_aBRaw[PPUREG_Status] = 0;
 	}
 }
 
@@ -1585,7 +1732,7 @@ void PrintLogHistory(LogHistory * pLhist)
 	}
 }
 
-bool FTryRunLogTest(const char * pChzFilenameRom, const char * pChzFilenameLog) 
+bool FTryRunLogTest(const char * pChzFilenameRom, const char * pChzFilenameLog, int addrStart) 
 {
 	LogHistory lhist;
 
@@ -1603,7 +1750,10 @@ bool FTryRunLogTest(const char * pChzFilenameRom, const char * pChzFilenameLog)
 	}
 
 	SetPowerUpState(&fam, fpow);
-	u8 b = U8PeekMem(&fam.m_memmp, 0x6000);
+	if (addrStart >= 0)
+	{
+		fam.m_cpu.m_pc = u16(addrStart);
+	}
 
 	u8 * pBLog = nullptr;
 	size_t cBLog = 0;
@@ -1643,6 +1793,7 @@ bool FTryRunLogTest(const char * pChzFilenameRom, const char * pChzFilenameLog)
 		StepCpu(&fam);
 	}
 
+	printf("Test '%s' success at cycle %lld\n", pChzFilenameLog, fam.m_cpu.m_cCycleCpu);
 	return fPassTest;
 }
 
@@ -1653,11 +1804,12 @@ bool FTryAllLogTests()
 		const char *	m_pChzPath;
 		const char *	m_pChzRom;
 		const char *	m_pChzLog;
+		int				m_addrStart;
 	};
 
 	static const LogTest s_aLogtest[] = {
-		{"test\\nes_instr_test", "zero_page.nes", "zero_page.cpulog"}
-//		{"test\\nestest", "nestest.nes", "nestest.cpulog"}
+		{"test\\nes_instr_test",	"zero_page.nes",	"zero_page.cpulog",		-1},
+		{"test\\nestest",			"nestest.nes",		"nestest.cpulog",		0xC000}
 	};
 
 	char aChRom[256];
@@ -1669,7 +1821,7 @@ bool FTryAllLogTests()
 		sprintf_s(aChRom, FF_DIM(aChRom), "%s\\%s", logtest.m_pChzPath, logtest.m_pChzRom);
 		sprintf_s(aChLog, FF_DIM(aChRom), "%s\\%s", logtest.m_pChzPath, logtest.m_pChzLog);
 
-		if (!FTryRunLogTest(aChRom, aChLog))
+		if (!FTryRunLogTest(aChRom, aChLog, logtest.m_addrStart))
 		{
 			ShowError("log test %d failed", iLogtest);
 			return false;

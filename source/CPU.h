@@ -297,7 +297,8 @@ enum OPCAT
 	OPCAT_Arithmetic,
 	OPCAT_Branch,
 	OPCAT_Flags,
-	OPCAT_Illegal,
+	OPCAT_Illegal,	// NOTE: this category is not the way to check for unofficial instructions, 
+					//  some legal operands have unofficial addressing modes
 	OPCAT_Logic,
 	OPCAT_Nop,
 	OPCAT_Memory,
@@ -339,6 +340,7 @@ struct OpInfo // tag = opinfo
 
 	u8				m_nOpcode;
 	s8				m_cCycle;
+	bool			m_fIsOfficial;
 	bool			m_fHasBoundaryCycle;
 };
 
