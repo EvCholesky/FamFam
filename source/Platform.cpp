@@ -1,6 +1,7 @@
 #include "imgui.h"
 #include "Platform.h"
 #include "glfw/include/GLFW/glfw3.h"
+#include "glfw/deps/GL/glext.h"
 
 
 static void GlfwKeyCallback(GLFWwindow * pGlfwin, int key, int scancode, int action, int mods)
@@ -99,4 +100,37 @@ void PollInput(Platform * pPlat)
 void ShutdownPlatform(Platform * pPlat)
 {
 	glfwTerminate();
+}
+
+Texture * PTexCreate(Platform * pPlat, s16 dX, s16 dY)
+{
+	auto pTex = new Texture;
+	pTex->m_dX = dX;
+	pTex->m_dY = dY;
+	pTex->m_pB = new s8[dX * dY * 3];
+
+	glGenTextures(1, (GLuint*)&pTex->m_nId);
+	glBindTexture(GL_TEXTURE_2D, pTex->m_nId);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 1);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	return pTex;
+}
+
+void UploadTexture(Platform * pPlat, Texture * pTex)
+{
+	glTexImage2D(
+		GL_TEXTURE_2D,			// target	
+		0,						// level
+		GL_RGBA,				// internal format
+		pTex->m_dX,				// width
+		pTex->m_dY,				// height
+		0,						// border
+		GL_RGB,					// format
+		GL_UNSIGNED_BYTE,		// type
+		pTex->m_pB);
 }

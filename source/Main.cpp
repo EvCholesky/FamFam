@@ -19,7 +19,7 @@ int main(int cpChzArg, const char * apChzArg[])
 
 	if (cpChzArg > 1)
 	{
-		bool fLoaded = FTryLoadRomFromFile(apChzArg[1], &cart, &g_fam.m_memmp);
+		bool fLoaded = FTryLoadRomFromFile(apChzArg[1], &cart, &g_fam);
 		if (!fLoaded)
 		{
 			printf("failed to load '%s'\n", apChzArg[1]);
@@ -44,12 +44,13 @@ int main(int cpChzArg, const char * apChzArg[])
 	ImGui_ImplGlfw_InitForOpenGL(plat.m_pGlfwin, false);
     ImGui_ImplOpenGL2_Init();
 
-	if (!FTryAllLogTests())
-		return 0;
+//	if (!FTryAllLogTests())
+//		return 0;
+
+	Debugger debug;
+	InitDebugger(&debug, &plat);
 
 	bool fShowImguiDemoWindow = true;
-	bool fShowDisasmWindow = true;
-	bool fShowRegisterWindow = true;
 	while (!FShouldWindowClose(&plat))
 	{
 		ClearScreen(&plat);
@@ -64,15 +65,7 @@ int main(int cpChzArg, const char * apChzArg[])
             ImGui::ShowDemoWindow(&fShowImguiDemoWindow);
 		}
 
-		if (fShowDisasmWindow)
-		{
-			UpdateDisassemblyWindow(&g_fam, &fShowDisasmWindow);
-		}
-
-		if (fShowRegisterWindow)
-		{
-			UpdateRegisterWindow(&g_fam, &fShowRegisterWindow);
-		}
+		UpdateDebugger(&debug, &plat, &g_fam);
 
 		// Render dear imgui into screen
 

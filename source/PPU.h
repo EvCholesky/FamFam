@@ -1,8 +1,43 @@
 #pragma once
+#include "Common.h"
 
-static const int kCBVramPhysical = 16 * 1024;
+//static const int kCBVramPhysical = 16 * 1024;
+static const int kCBVramPhysical = FF_KIB(2);
+static const int kCBChrMapped = FF_KIB(8);
 
-// eight PPU regisers ($2000..$2007) are mirrored every eight bytes through $3FFF
+static const int s_cXChrTile = 16;
+static const int s_cYChrTile = 16;
+static const int s_dXChrHalf = s_cXChrTile * 8;
+static const int s_dYChrHalf = s_cYChrTile * 8;
+
+static const int kCColHw = 64;	//64 colors in the hardware palette
+
+struct Texture;
+
+// eight PPU registers ($2000..$2007) are mirrored every eight bytes through $3FFF
+
+union RGBA // tag = rgba 
+{
+	u32 m_nBits;
+	struct 
+	{
+		u8 m_r;
+		u8 m_g;
+		u8 m_b;
+		u8 m_a;
+	};
+};
+
+ 
+enum HWCOL // HardWare COLor indices
+{
+	HWCOL_White = 0x30,
+	HWCOL_Black = 0x3F,
+	HWCOL_Max = 64,
+	HWCOL_Min = 0,
+};
+
+RGBA RgbaFromHwcol(HWCOL hwcol);
 
 enum PPUREG : u16
 {
@@ -84,11 +119,32 @@ union OAM	// Object Attribute Memory, aka sprite data
 	};
 };
 
+enum PADDR
+{
+	PADDR_PatternTable0		= 0x0000,
+	PADDR_PatternTable1		= 0x1000,
+	// nametables are all addressed, but only two are backed by memory - address bit 10 of CIRAM controls mapping
+	PADDR_NameTable0		= 0x2000,
+	PADDR_NameTable1		= 0x2400,
+	PADDR_NameTable2		= 0x2800,
+	PADDR_NameTable3		= 0x2C00,
+	PADDR_NameTableMirrors	= 0x3000,
+	PADDR_PaletteRam		= 0x3F00,		//bgColor, followed 8 3-color palettes where each color is one byte
+	PADDR_PaletteMirrors	= 0x3F20,
+	PADDR_VramMax			= 0xFFFF,
+};
+
 struct Ppu
 {
 			Ppu()
 				{ ; }
 
-	OAM		m_soamSecondary[8];		// internal sprite memory inaccessible to the program; used to cache the sprites rendered in the current scanline. 
+	u8 		m_aBVramPhysical[kCBVramPhysical];		// 2k of physical VRAM, aka CIRAM
+	u8		m_aBChr[kCBChrMapped];					// 8k current mapped Chr rom
+//	u8 		m_aBVram[PADDR_VramMax];
 
+	OAM		m_aOam[64];	// internal OAM memory - sprite data
+	OAM		m_aOamSecondary[8];		// internal sprite memory inaccessible to the program; used to cache the sprites rendered in the current scanline. 
 };
+
+void DrawChrMemory(Ppu * pPpu, Texture * pTex, bool fUse8x16);

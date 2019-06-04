@@ -93,6 +93,6 @@ struct Cart
 
 
 
-bool FTryLoadRomFromFile(const char * pChzFilename, Cart * pCart, MemoryMap * pMemmp);
-bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart, MemoryMap * pMemmp);
+bool FTryLoadRomFromFile(const char * pChzFilename, Cart * pCart, Famicom * pFam);
+bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart, Famicom * pFam);
 void CloseRom(Cart * pCart);

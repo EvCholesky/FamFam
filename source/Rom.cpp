@@ -62,8 +62,9 @@ void MapMemoryCommon(MemoryMap * pMemmp)
 	(void)AddrspMarkUnmapped(pMemmp, 0x4018, 0x4020);				// unused APU and IO test space
 }
 
-bool FTrySetupMapperNrom(MemoryMap* pMemmp, Cart* pCart)
+bool FTrySetupMapperNrom(Famicom * pFam, Cart* pCart)
 {
+	auto pMemmp = &pFam->m_memmp;
 	MapMemoryCommon(pMemmp);
 	(void)AddrspMarkUnmapped(pMemmp, 0x4020, 0x8000);
 	
@@ -101,8 +102,9 @@ bool FTrySetupMapperNrom(MemoryMap* pMemmp, Cart* pCart)
 	return true;
 }
 
-bool FTrySetupMapperMmc1(MemoryMap* pMemmp, Cart* pCart)
+bool FTrySetupMapperMmc1(Famicom * pFam, Cart* pCart)
 {
+	auto pMemmp = &pFam->m_memmp;
 	MapMemoryCommon(pMemmp);
 	u32 addrUnmappedMax = 0x8000;
 	if (pCart->m_cBPrgRam)
@@ -129,28 +131,29 @@ bool FTrySetupMapperMmc1(MemoryMap* pMemmp, Cart* pCart)
 	return true;
 }
 
-bool FTrySetupMapperUxRom(MemoryMap* pMemmp, Cart* pCart)
+bool FTrySetupMapperUxRom(Famicom * pFam, Cart* pCart)
 {
+	auto pMemmp = &pFam->m_memmp;
 	MapMemoryCommon(pMemmp);
 	FF_ASSERT(false, "TBD");
 
 	return false;
 }
 
-bool FTrySetupMemoryMapper(MemoryMap * pMemmp, Cart * pCart)
+bool FTrySetupMemoryMapper(Famicom * pFam, Cart * pCart)
 {
 	switch(pCart->m_mapperk)
 	{
-	case MAPPERK_NROM:	return FTrySetupMapperNrom(pMemmp, pCart);
-	case MAPPERK_MMC1:	return FTrySetupMapperMmc1(pMemmp, pCart);
-	case MAPPERK_UxROM:	return FTrySetupMapperUxRom(pMemmp, pCart);
+	case MAPPERK_NROM:	return FTrySetupMapperNrom(pFam, pCart);
+	case MAPPERK_MMC1:	return FTrySetupMapperMmc1(pFam, pCart);
+	case MAPPERK_UxROM:	return FTrySetupMapperUxRom(pFam, pCart);
 	default:
 		ShowError("Unknown mapper type");
 		return false;
 	}
 }
 
-bool FTryLoadRomFromFile(const char * pChzFilename, Cart * pCart, MemoryMap * pMemmp)
+bool FTryLoadRomFromFile(const char * pChzFilename, Cart * pCart, Famicom * pFam)
 {
 	FILE * pFile = nullptr;
 	FF_FOPEN(pFile, pChzFilename, "rb");
@@ -188,10 +191,10 @@ bool FTryLoadRomFromFile(const char * pChzFilename, Cart * pCart, MemoryMap * pM
     }
 
    fclose(pFile);
-   return FTryLoadRom(pB, cB, pCart, pMemmp);
+   return FTryLoadRom(pB, cB, pCart, pFam);
 }
 
-bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart, MemoryMap * pMemmp)
+bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart, Famicom * pFam)
 {
 	RomHeader * pHead = (RomHeader *)pB;
 
@@ -232,7 +235,11 @@ bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart, MemoryMap * pMemmp)
 	// Chr rom data
 	pCart->m_pBChrRom = pCart->m_pBPrgRom + pCart->m_cBPrgRom;
 
-	if (!FTrySetupMemoryMapper(pMemmp, pCart))
+	auto pPpu = &pFam->m_ppu;
+	int cBChr = min<int>(FF_DIM(pPpu->m_aBChr), pCart->m_cBChrRom);
+	CopyAB(pCart->m_pBChrRom, pPpu->m_aBChr, cBChr);
+
+	if (!FTrySetupMemoryMapper(pFam, pCart))
 	{
 		return false;
 	}

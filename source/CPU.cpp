@@ -1662,7 +1662,6 @@ void AdvancePpuTiming(PpuTiming * pPtim, s64 cCycleCpu, MemoryMap * pMemmp)
 
 	static const int s_pclockVBlankSet = 241 * s_cPclockPerScanline + 1; // vblank happens on the first cycle of the 241st scanline of a frame.
 	static const int s_pclockStatusClear = 261 * s_cPclockPerScanline + 1; // vblank is cleared  on the first cycle of the prerender scanline.
-//	if (fIsRenderEnabled && fIsOddFrame && (s_iCycleIdleMin > cPclockPrev && s_iCycleIdleMin <= cPclock))
 	if (fIsRenderEnabled && fIsOddFrame && cFramPRev != pPtim->m_cFrame)
 	{
 		// Odd frames (with rendering enabled) are one cycle shorter - this cycle is dropped from the
@@ -1743,7 +1742,7 @@ bool FTryRunLogTest(const char * pChzFilenameRom, const char * pChzFilenameLog, 
 	u16 fpow = FPOW_LogTest;
 	SetPowerUpPreLoad(&fam, fpow);
 
-	if (!FTryLoadRomFromFile(pChzFilenameRom, &cart, &fam.m_memmp))
+	if (!FTryLoadRomFromFile(pChzFilenameRom, &cart, &fam))
 	{
 		ShowError("Could not load log test rom file '%s'", pChzFilenameRom);
 		return false;

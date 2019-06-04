@@ -1,6 +1,7 @@
 #include "Cpu.h"
 #include "Debugger.h"
 #include "imgui.h"
+#include "Platform.h"
 #include "Rom.h"
 #include "stdio.h"
 #include <ctype.h>
@@ -136,6 +137,58 @@ int IFindAddr(const DynAry<u16> & aryAddr, u16 addr)
 			return i;
 	}
 	return -1;
+}
+
+void InitDebugger(Debugger * pDebug, Platform * pPlat)
+{
+	pDebug->m_pTexChr = PTexCreate(pPlat, s_dXChrHalf, s_dYChrHalf);
+	//pDebug->m_pTexNametable;
+
+	/*
+	// build pallet stripes
+	auto pB = pDebug->m_pTexChr->m_pB;
+	for (int y = 0; y < 256; ++y)
+	{
+		for (int x = 0; x < 256; ++x)
+		{
+			int xCol = x / 16; 
+			int yCol = y / 64; 
+			int iCol = xCol + yCol * 16;
+			RGBA rgba = RgbaFromHwcol(HWCOL(iCol));
+			*pB++ = rgba.m_r;
+			*pB++ = rgba.m_g;
+			*pB++ = rgba.m_b;
+		}
+	}*/
+
+	UploadTexture(pPlat, pDebug->m_pTexChr);
+}
+
+void UpdateDebugger(Debugger * pDebug, Platform * pPlat, Famicom * pFam)
+{
+	// BB - should flag when the ppu has been updated
+	static bool s_fFirst = true;
+	if (s_fFirst)
+	{
+		s_fFirst = false;
+		DrawChrMemory(&pFam->m_ppu, pDebug->m_pTexChr, true);
+		UploadTexture(pPlat, pDebug->m_pTexChr);
+	}
+
+	if (pDebug->m_fShowDisasmWindow)
+	{
+		UpdateDisassemblyWindow(pFam, &pDebug->m_fShowDisasmWindow);
+	}
+
+	if (pDebug->m_fShowRegisterWindow)
+	{
+		UpdateRegisterWindow(pFam, &pDebug->m_fShowRegisterWindow);
+	}
+
+	if (pDebug->m_fShowChrWindow)
+	{
+		UpdateChrWindow(pDebug, pFam, &pDebug->m_fShowChrWindow);
+	}
 }
 
 void UpdateDisassemblyWindow(Famicom * pFam, bool * pFShowDisasm)
@@ -420,6 +473,20 @@ void UpdateRegisterWindow(Famicom * pFam, bool * pFShowWindow)
 	FInputRegister8("Y", &pCpu->m_y, pCpuPrev->m_y);
 	FInputRegister8("SP", &pCpu->m_sp, pCpuPrev->m_sp);
 	FInputRegister16("PC", &pCpu->m_pc, pCpuPrev->m_pc);
+
+    ImGui::End();
+}
+
+void UpdateChrWindow(Debugger * pDebug, Famicom * pFam, bool * pFShowWindow)
+{
+    ImGui::SetNextWindowSize(ImVec2(520,300), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Chr", pFShowWindow))
+    {
+        ImGui::End();
+        return;
+    }
+
+	ImGui::Image((void*)(intptr_t)pDebug->m_pTexChr->m_nId, ImVec2(256, 256));
 
     ImGui::End();
 }
