@@ -6,21 +6,36 @@ struct Famicom;
 struct Platform;
 struct Texture;
 
+struct PpuWindow // tag = ppuwin
+{
+					PpuWindow()
+					:m_fShowWindow(true)
+					,m_fChrNeedsRefresh(true)
+					,m_fUse8x16Mode(false)
+					,m_pTexChr(nullptr)
+						{ ; }
+
+	bool			m_fShowWindow;
+	bool			m_fChrNeedsRefresh;
+	bool			m_fUse8x16Mode;
+	Texture *		m_pTexChr;
+
+};
+
 struct Debugger // tag = debug
 {
 					Debugger()
 					:m_fShowDisasmWindow(true)
 					,m_fShowRegisterWindow(true)
-					,m_fShowChrWindow(true)
-					,m_pTexChr(nullptr)
 					,m_pTexNametable(nullptr)
 						{ ; }
 
 	bool			m_fShowDisasmWindow;
 	bool			m_fShowRegisterWindow;
-	bool			m_fShowChrWindow;
-	Texture *		m_pTexChr;
 	Texture *		m_pTexNametable;
+	PpuWindow		m_ppuwin;
+
+
 };
 
 void InitDebugger(Debugger * pDebug, Platform * pPlat);
@@ -28,4 +43,4 @@ void UpdateDebugger(Debugger * pDebug, Platform * pPlat, Famicom * pFam);
 
 void UpdateDisassemblyWindow(Famicom * pFam, bool * pFShowWindow);
 void UpdateRegisterWindow(Famicom * pFam, bool * pFShowWindow);
-void UpdateChrWindow(Debugger * pDebug, Famicom * pFam, bool * pFShowWindow);
+void UpdateChrWindow(Debugger * pDebug, Famicom * pFam, Platform * pPlat);

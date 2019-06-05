@@ -141,7 +141,9 @@ int IFindAddr(const DynAry<u16> & aryAddr, u16 addr)
 
 void InitDebugger(Debugger * pDebug, Platform * pPlat)
 {
-	pDebug->m_pTexChr = PTexCreate(pPlat, s_dXChrHalf, s_dYChrHalf);
+	pDebug->m_ppuwin.m_pTexChr = PTexCreate(pPlat, s_dXChrHalf * 2, s_dYChrHalf);
+	pDebug->m_ppuwin.m_fChrNeedsRefresh = true;
+
 	//pDebug->m_pTexNametable;
 
 	/*
@@ -160,21 +162,10 @@ void InitDebugger(Debugger * pDebug, Platform * pPlat)
 			*pB++ = rgba.m_b;
 		}
 	}*/
-
-	UploadTexture(pPlat, pDebug->m_pTexChr);
 }
 
 void UpdateDebugger(Debugger * pDebug, Platform * pPlat, Famicom * pFam)
 {
-	// BB - should flag when the ppu has been updated
-	static bool s_fFirst = true;
-	if (s_fFirst)
-	{
-		s_fFirst = false;
-		DrawChrMemory(&pFam->m_ppu, pDebug->m_pTexChr, true);
-		UploadTexture(pPlat, pDebug->m_pTexChr);
-	}
-
 	if (pDebug->m_fShowDisasmWindow)
 	{
 		UpdateDisassemblyWindow(pFam, &pDebug->m_fShowDisasmWindow);
@@ -185,9 +176,9 @@ void UpdateDebugger(Debugger * pDebug, Platform * pPlat, Famicom * pFam)
 		UpdateRegisterWindow(pFam, &pDebug->m_fShowRegisterWindow);
 	}
 
-	if (pDebug->m_fShowChrWindow)
+	if (pDebug->m_ppuwin.m_fShowWindow)
 	{
-		UpdateChrWindow(pDebug, pFam, &pDebug->m_fShowChrWindow);
+		UpdateChrWindow(pDebug, pFam, pPlat);
 	}
 }
 
@@ -477,16 +468,28 @@ void UpdateRegisterWindow(Famicom * pFam, bool * pFShowWindow)
     ImGui::End();
 }
 
-void UpdateChrWindow(Debugger * pDebug, Famicom * pFam, bool * pFShowWindow)
+void UpdateChrWindow(Debugger * pDebug, Famicom * pFam, Platform * pPlat)
 {
+	auto pPpuwin = &pDebug->m_ppuwin;
+	if (pPpuwin->m_fChrNeedsRefresh)
+	{
+		DrawChrMemory(&pFam->m_ppu, pPpuwin->m_pTexChr, pPpuwin->m_fUse8x16Mode);
+		UploadTexture(pPlat, pPpuwin->m_pTexChr);
+	}
+
     ImGui::SetNextWindowSize(ImVec2(520,300), ImGuiCond_FirstUseEver);
-    if (!ImGui::Begin("Chr", pFShowWindow))
+    if (!ImGui::Begin("PPU", &pPpuwin->m_fShowWindow))
     {
         ImGui::End();
         return;
     }
 
-	ImGui::Image((void*)(intptr_t)pDebug->m_pTexChr->m_nId, ImVec2(256, 256));
+	ImGui::Image((void*)(intptr_t)pPpuwin->m_pTexChr->m_nId, ImVec2(512, 256));
+
+    if (ImGui::Checkbox("Use 8x16 Sprites", &pPpuwin->m_fUse8x16Mode))
+	{
+		pPpuwin->m_fChrNeedsRefresh = true;
+	}
 
     ImGui::End();
 }

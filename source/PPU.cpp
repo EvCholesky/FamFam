@@ -23,14 +23,17 @@ RGBA RgbaFromHwcol(HWCOL hwcol)
 
 void DrawChrMemory(Ppu * pPpu, Texture * pTex, bool fUse8x16)
 {
-	FF_ASSERT(pTex->m_dX == s_dXChrHalf && pTex->m_dY == s_dYChrHalf, "DrawChrMemory is not very flexible yet.");	
-
+	static const int s_cBPerPixel = 3; // bytes per pixel
 	int yStride = 64; 
-	auto pBOut = pTex->m_pB;
+	auto pBOutLeft = pTex->m_pB;
+	auto pBOutRight = &pTex->m_pB[s_dYChrHalf * s_cBPerPixel];
 	u8 * pBChr = pPpu->m_aBChr;
 
 	int cSubtile = 8;
 	int dYTile = 8;
+	int dYStride = s_dYChrHalf * 2;
+
+	FF_ASSERT(pTex->m_dX == dYStride && pTex->m_dY == s_dYChrHalf, "DrawChrMemory is not very flexible yet.");	
 
 	for (int yTile = 0; yTile < s_cYChrTile; ++yTile)
 	{
@@ -38,69 +41,48 @@ void DrawChrMemory(Ppu * pPpu, Texture * pTex, bool fUse8x16)
 		{
 			for (int ySubtile = 0; ySubtile < cSubtile; ++ySubtile)
 			{
-				u8 bPlane0 = pBChr[(xTile << 4) | (yTile << 8) | ySubtile ];
-				u8 bPlane1 = pBChr[(xTile << 4) | (yTile << 8) | ySubtile | 0x08];
+				u8 bPlaneL0 = pBChr[(xTile << 4) | (yTile << 8) | ySubtile ];
+				u8 bPlaneL1 = pBChr[(xTile << 4) | (yTile << 8) | ySubtile | 0x08];
+
+				u8 bPlaneR0 = pBChr[(xTile << 4) | (yTile << 8) | ySubtile | 0x1000];
+				u8 bPlaneR1 = pBChr[(xTile << 4) | (yTile << 8) | ySubtile | 0x1008];
 
 				int yLine;
 				int iPixel;
 				if (fUse8x16)
 				{
 					yLine = ((yTile & 0xFE) + (xTile & 0x1)) * dYTile + ySubtile;
-					iPixel = ((xTile >> 1) + ((yTile & 0x1) * 8))*8 + (yLine*s_dYChrHalf);
+					iPixel = ((xTile >> 1) + ((yTile & 0x1) * 8))*8 + (yLine*dYStride);
 				}
 				else
 				{
 					yLine = yTile*dYTile + ySubtile;
-					iPixel = xTile*8 + (yLine*s_dYChrHalf);
+					iPixel = xTile*8 + (yLine*dYStride);
 				}
 
 				for (int xSubtile = 0; xSubtile < 8; ++xSubtile)
 				{
-					u16 i = (bPlane0 >> (7-xSubtile)) & 0x1;
-					i |= ((bPlane1 >> (7-xSubtile)) & 0x1) << 1;
+					u16 i = (bPlaneL0 >> (7-xSubtile)) & 0x1;
+					i |= ((bPlaneL1 >> (7-xSubtile)) & 0x1) << 1;
 
-					auto pBTest = &pBOut[(iPixel + xSubtile) * 3];
-					pBTest[0] = 32 + i * 64; 
-					pBTest[1] = 32 + i * 64; 
-					pBTest[2] = 32 + i * 64; 
+					auto pBLeft = &pBOutLeft[(iPixel + xSubtile) * s_cBPerPixel];
+					int nValue = 32 + i * 64; 
+					pBLeft[0] = nValue;
+					pBLeft[1] = nValue;
+					pBLeft[2] = nValue;
+
+					i = (bPlaneR0 >> (7-xSubtile)) & 0x1;
+					i |= ((bPlaneR1 >> (7-xSubtile)) & 0x1) << 1;
+
+					auto pBRight = &pBOutRight[(iPixel + xSubtile) * s_cBPerPixel];
+					nValue = 32 + i * 64; 
+					pBRight[0] = nValue;
+					pBRight[1] = nValue;
+					pBRight[2] = nValue;
 				}
 			}
 		}
 	}
-#if 0
-	static const int s_cBTileLine = 16;
-	static const int s_cBTile = s_cBTileLine * 8;
-
-	for (int yTile = 0; yTile < 8; ++yTile)
-	{
-		for (int xTile = 0; xTile < 8; ++xTile)
-		{
-			//int iTile = xTile + yTile * 8;
-			//RGBA rgba = RgbaFromHwcol(HWCOL(iTile % HWCOL_Max));
-			for (int ySubtile = 0; ySubtile < 8; ++ySubtile)
-			{
-				auto pBTile = &pBChr[xTile * s_cBTile + (yTile*8 + ySubtile) * s_cBTileLine];
-				u16 nTile = *(u16*)pBTile;
-
-				int yLine = yTile*8 + ySubtile;
-				int iPixel = xTile*8 + (yLine*64);
-				//iPixel *= 3;
-				for (int xSubtile = 0; xSubtile < 8; ++xSubtile)
-				{
-					SetRgbFromTile(nTile, xSubtile, &pBOut[(iPixel + xSubtile) * 3]);
-
-					/*
-					auto pBTest = &pBOut[(iPixel + xSubtile) * 3];
-					FF_ASSERT(pBTest - pBOut < 64*64*3, "ack");
-					pBTest[0] = rgba.m_r;
-					pBTest[1] = rgba.m_g;
-					pBTest[2] = rgba.m_b;
-					*/
-				}
-			}
-		}
-	}
-#endif
 }
 
 
