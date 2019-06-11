@@ -41,9 +41,9 @@ void MapMemoryCommon(MemoryMap * pMemmp)
 	auto addrspBottom = AddrspMapMemory(pMemmp, 0x0, 0x800);		// bottom 2K
 	MapMirrored(pMemmp, addrspBottom, 0x800, 0x2000);				// mirrors to 8K
 
-	auto iMemcbWriteOnly = IMemcbAllocate(pMemmp, U8PeekWriteOnlyPpuReg, PokePpuReg);
-	auto iMemcbStatus = IMemcbAllocate(pMemmp, U8PeekPpuStatus, PokePpuReg);
-	auto iMemcbReadWrite = IMemcbAllocate(pMemmp, U8PeekPpuStatus, PokePpuReg);
+	auto iMemcbWriteOnly = IMemcbAllocate(pMemmp, U8ReadPpuRegWriteOnly, WritePpuReg);
+	auto iMemcbStatus = IMemcbAllocate(pMemmp, U8ReadPpuStatus, WritePpuReg);
+	auto iMemcbReadWrite = IMemcbAllocate(pMemmp, U8ReadPpuReg, WritePpuReg);
 
 	MemoryDescriptor aMemdesc[] = {
 		MemoryDescriptor(FMEM_None,		iMemcbWriteOnly),	//PPUREG_Ctrl			= 0x2000
@@ -99,6 +99,10 @@ bool FTrySetupMapperNrom(Famicom * pFam, Cart* pCart)
 	}
 
 	//TestMemoryMap(pMemmp);
+
+	int cBChr = min<int>(FF_DIM(pFam->m_ppu.m_aBChr), pCart->m_cBChrRom);
+	NTMIR ntmir = (pCart->m_pHead->m_romf.m_fMirrorVert) ? NTMIR_Vertical : NTMIR_Horizontal;
+	InitPpuMemoryMap(&pFam->m_ppu, pFam->m_ppu.m_aBChr, cBChr, ntmir);
 	return true;
 }
 
@@ -128,6 +132,10 @@ bool FTrySetupMapperMmc1(Famicom * pFam, Cart* pCart)
 	auto addrspPrg0 = AddrspMapMemory(pMemmp, 0x6000, FF_KIB(8), &memdescReadOnly);
 	auto addrspPrg1 = AddrspMapMemory(pMemmp, 0x6000, FF_KIB(8), &memdescReadOnly);
 	TestMemoryMap(pMemmp);
+
+	int cBChr = min<int>(FF_DIM(pFam->m_ppu.m_aBChr), pCart->m_cBChrRom);
+	NTMIR ntmir = (pCart->m_pHead->m_romf.m_fMirrorVert) ? NTMIR_Vertical : NTMIR_Horizontal;
+	InitPpuMemoryMap(&pFam->m_ppu, pFam->m_ppu.m_aBChr, cBChr, ntmir);
 	return true;
 }
 
@@ -153,7 +161,7 @@ bool FTrySetupMemoryMapper(Famicom * pFam, Cart * pCart)
 	}
 }
 
-bool FTryLoadRomFromFile(const char * pChzFilename, Cart * pCart, Famicom * pFam)
+bool FTryLoadRomFromFile(const char * pChzFilename, Cart * pCart, Famicom * pFam, FPOW fpow)
 {
 	FILE * pFile = nullptr;
 	FF_FOPEN(pFile, pChzFilename, "rb");
@@ -191,11 +199,12 @@ bool FTryLoadRomFromFile(const char * pChzFilename, Cart * pCart, Famicom * pFam
     }
 
    fclose(pFile);
-   return FTryLoadRom(pB, cB, pCart, pFam);
+   return FTryLoadRom(pB, cB, pCart, pFam, fpow);
 }
 
-bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart, Famicom * pFam)
+bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart, Famicom * pFam, FPOW fpow)
 {
+	SetPowerUpPreLoad(pFam, fpow);
 	RomHeader * pHead = (RomHeader *)pB;
 
 	static const u32 kRomCookie = 0x1a53454E; //"NES"
@@ -244,6 +253,7 @@ bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart, Famicom * pFam)
 		return false;
 	}
 
+	SetPowerUpState(pFam, fpow);
 	printf("RomLoaded: PRG %d KiB,  CHR %d KiB\n", pCart->m_cBPrgRom / 1024, pCart->m_cBChrRom / 1024);
 	return true;
 }

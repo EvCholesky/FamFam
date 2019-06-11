@@ -300,6 +300,23 @@ public:
 							}
 						}
 					}
+	void		RemoveSpan(int iMin, int iMax)
+					{
+						T * pEnd = &m_a[m_c];
+						int i = iMin;
+						for (T * pSrc = &m_a[i], * pDst = &m_a[iMax]; pSrc != pEnd; ++pSrc, ++i)
+						{
+							if (i < iMax)
+							{
+								Destruct(pSrc);
+								--m_c;
+							}
+							else
+							{
+								*pDst++ = *pSrc;
+							}
+						}
+					}
 		
 	void			Clear()
 					{
@@ -436,6 +453,24 @@ public:
 						size_t cResize = (m_c < 8) ? 0 : m_cMax / 2;
 						if(m_c < cResize)
 							Resize(cResize);
+					}
+
+	void		RemoveSpan(int iMin, int iMax)
+					{
+						T * pEnd = &m_a[m_c];
+						int i = iMin;
+						for (T * pSrc = &m_a[i], * pDst = &m_a[iMax]; pSrc != pEnd; ++pSrc, ++i)
+						{
+							if (i < iMax)
+							{
+								Destruct(pSrc);
+								--m_c;
+							}
+							else
+							{
+								*pDst++ = *pSrc;
+							}
+						}
 					}
 
 	void		RemoveFastByI(size_t iT)

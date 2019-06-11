@@ -47,21 +47,6 @@ struct Cpu // tag = cpu
 										// 1 cpu cycle == 3 Ppu cycle
 };
 
-struct PpuTiming // tag = ptim
-{
-					PpuTiming()
-					:m_cPclockScanline(0)
-					,m_cScanline(0)
-					,m_cFrame(0)
-					,m_cCycleCpuPrev(0)
-						{ ; }
-
-	u16				m_cPclockScanline;	// Ppu cycles since the start of the scanline
-	u16				m_cScanline;		// Scanlines since the start of the frame
-	int				m_cFrame;			// Total frames since power up
-	s64				m_cCycleCpuPrev;	// count of cycles elapsed since the last ppu update
-};
-
 enum MEMSP : u16 // MEMory SPan
 {
 	MEMSP_ZeroPageMin	= 0x0000,
@@ -140,8 +125,8 @@ struct MemoryDescriptor //  tag = memdesc
 	u8		m_iMemcb;	// index into the memory callback table, 0 == no cb
 };
 
-typedef u8 (*PFnReadMemCallback)(MemoryMap * pMemmp, u16 addr);  
-typedef void (*PFnWriteMemCallback)(MemoryMap * pMemmp, u16 addr, u8 b);  
+typedef u8 (*PFnReadMemCallback)(Famicom * pFam, u16 addr);  
+typedef void (*PFnWriteMemCallback)(Famicom * pFam, u16 addr, u8 b);  
 struct MemoryCallback // tag = memcb
 {
 	PFnReadMemCallback		m_pFnReadmem;
@@ -184,12 +169,10 @@ void PokeMemU8(MemoryMap * pMemmp, u16 addr, u8 b);
 void WriteMemU8(Famicom * pFam, u16 addr, u8 b);
 void WriteMemU16(Famicom * pFam, u16 addr, u16 n);
 
-u8 U8PeekWriteOnlyPpuReg(MemoryMap * pMemmp, u16 addr);
-u8 U8PeekPpuStatus(MemoryMap * pMemmp, u16 addr);
-u8 U8PeekPpuReg(MemoryMap * pMemmp, u16 addr);
-void PokePpuReg(MemoryMap * pMemmp, u16 addr, u8 b);
-
-void AdvancePpuTiming(PpuTiming * pPtim, s64 cCycleCpu, MemoryMap * pMemmp);
+u8 U8ReadPpuRegWriteOnly(Famicom * pFam, u16 addr);
+u8 U8ReadPpuStatus(Famicom * pFam, u16 addr);
+u8 U8ReadPpuReg(Famicom * pFam, u16 addr);
+void WritePpuReg(Famicom * pFam, u16 addr, u8 b);
 
 enum MODELK
 {
@@ -204,14 +187,20 @@ struct Model // tag = model
 struct Famicom // tag = fam
 {
 					Famicom()
-					:m_pModel(nullptr)
+					:m_cPclockPpu(0)
+					,m_pModel(nullptr)
 					,m_pCart(nullptr)
 						{ ; }
 
 	Cpu  			m_cpu;
 	Cpu				m_cpuPrev;
-	PpuTiming		m_ptimCpu;
+
+	PpuTiming		m_ptimCpu;		// how far has the cpu simulation processed the ppuClock
+	u64				m_cPclockPpu;	// how far has the ppu simulated
+
 	Ppu				m_ppu;
+	PpuCommandList	m_ppucl;
+
 	Model *			m_pModel;
 	Cart *			m_pCart;
 	MemoryMap 		m_memmp;
@@ -226,8 +215,18 @@ inline void TickCpu(Famicom * pFam)
 
 inline u8 U8ReadMem(Famicom * pFam, u16 addr)
 {
-	u8 b = U8PeekMem(&pFam->m_memmp, addr);
-	pFam->m_memmp.m_bPrevBus = b;
+	auto pMemmp = &pFam->m_memmp;
+	const MemoryDescriptor & memdesc = pMemmp->m_mpAddrMemdesc[addr];
+	if (memdesc.m_iMemcb)
+	{
+		TickCpu(pFam);
+		return (*pMemmp->m_aryMemcb[memdesc.m_iMemcb].m_pFnReadmem)(pFam, addr);
+	}
+
+	u8 * pB = pMemmp->m_mpAddrPB[addr];
+
+	u8 b = *pB; 
+	pMemmp->m_bPrevBus = b;
 	TickCpu(pFam);
 	return b;
 }
@@ -246,7 +245,20 @@ inline u16 U16PeekMem(MemoryMap * pMemmp, u16 addr)
 
 inline void WriteMemU8(Famicom * pFam, u16 addr, u8 b)
 {
-	PokeMemU8(&pFam->m_memmp, addr, b);
+	auto pMemmp = &pFam->m_memmp;
+	const MemoryDescriptor & memdesc = pMemmp->m_mpAddrMemdesc[addr];
+	if (memdesc.m_iMemcb)
+	{
+		(*pMemmp->m_aryMemcb[memdesc.m_iMemcb].m_pFnWritemem)(pFam, addr, b);
+		TickCpu(pFam);
+		return;
+	}
+
+	pMemmp->m_bPrevBus = b;
+
+	u8 bDummy;
+	u8 * pB = ((memdesc.m_fmem & FMEM_ReadOnly) == 0) ? pMemmp->m_mpAddrPB[addr] : &bDummy;
+	*pB = b;
 	TickCpu(pFam);
 }
 
@@ -357,8 +369,10 @@ enum FPOW // Flags for POWer up
 	FPOW_LogTest	= 0x1,
 };
 
+void SetPowerUpPreLoad(Famicom * pFam, u16 fpow);
 void SetPowerUpState(Famicom * pFam, u16 fpow);
 void SetPpuPowerUpState(Famicom * pFam, u16 fpow);
 
+void ExecuteFamicomFrame(Famicom * pFam);
 bool FTryAllLogTests();
 

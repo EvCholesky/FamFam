@@ -1,20 +1,97 @@
 #pragma once
+#include "Array.h"
 #include "Common.h"
 
-//static const int kCBVramPhysical = 16 * 1024;
-static const int kCBVramPhysical = FF_KIB(2);
+static const int kCBCieramMax = FF_KIB(4);
 static const int kCBChrMapped = FF_KIB(8);
+static const int kCBVramAddressable = FF_KIB(16);
+static const int kCBPalette = 32;
+static const int s_cBVramGranularity = 32;		
 
 static const int s_cXChrTile = 16;
 static const int s_cYChrTile = 16;
 static const int s_dXChrHalf = s_cXChrTile * 8;
 static const int s_dYChrHalf = s_cYChrTile * 8;
 
-static const int kCColHw = 64;	//64 colors in the hardware palette
+static const int s_cPclockPerCpuCycle = 3;
+static const int s_cPclockPerScanline = 341;
+static const int s_cScanlinesPerFrame = 262;
+static const int s_cScanlinesVisible = 240;
+static const int s_cPclockPerFrame = s_cPclockPerScanline * s_cScanlinesPerFrame;
 
+struct Famicom;
+struct MemoryMap;
 struct Texture;
 
-// eight PPU registers ($2000..$2007) are mirrored every eight bytes through $3FFF
+enum NTMIR	// Name Table MIRroring
+{
+	NTMIR_Vertical,		// Vertical mirroring: $2000 equals $2800 and $2400 equals $2C00 (e.g. Super Mario Bros.)
+	NTMIR_Horizontal,	// Horizontal mirroring: $2000 equals $2400 and $2800 equals $2C00 (e.g. Kid Icarus)
+	NTMIR_OneScreen,	// One-screen mirroring: All nametables refer to the same memory at any given time, and the mapper directly manipulates CIRAM address bit 10
+	NTMIR_FourScreen,	// Four-screen mirroring: CIRAM is disabled, and the cartridge contains additional VRAM used for all nametables 
+};
+
+struct PpuTiming // tag = ptim
+{
+					PpuTiming()
+					:m_cPclock(0)
+					,m_cCycleCpuPrev(0)
+						{ ; }
+
+	u64				m_cPclock;			// ppu clock cycle, not resetting every frame
+	s64				m_cCycleCpuPrev;	// count of cycles elapsed since the last ppu update
+};
+
+void AdvancePpuTiming(PpuTiming * pPtim, s64 cCycleCpu, MemoryMap * pMemmp);
+
+inline s64 CFrameFromCPclock(s64 cPclock)
+{
+	return cPclock / s_cPclockPerFrame;
+}
+
+inline void SplitPclockFrame(s64 cPclock, s64 * pCFrame, s64 * pCPclockSubframe)
+{
+	s64 cFrame = cPclock / s_cPclockPerFrame;
+	*pCFrame = cFrame;
+	*pCPclockSubframe = cPclock - (cFrame * s_cPclockPerFrame);
+}
+
+inline void SplitPclockScanline(s64 cPclock, int * pCScanline, int * pCPclockScanline )
+{
+	s64 cPclockSubframe = cPclock % s_cPclockPerFrame;
+	*pCScanline = int(cPclockSubframe / s_cPclockPerScanline);
+	*pCPclockScanline = int(cPclockSubframe % s_cPclockPerScanline);
+}
+
+
+
+enum PCMDK : s8 //Ppu CoMmanD Kind
+{
+	PCMDK_Read,
+	PCMDK_Write,
+};
+
+
+struct PpuCommand  // tag = ppucmd
+{
+	u8				m_bValue;
+	PCMDK			m_pcmdk;
+	u16				m_addr;
+	u64				m_cPclock;	 // BB - could save space if these were stored as dPclock, and we adjusted when we removed the executed spans  
+};
+
+struct PpuCommandList // tag = ppucl
+{
+						PpuCommandList()
+						:m_iPpucmdExecute(0)
+							{ ; }
+
+	int					m_iPpucmdExecute;		// index of next command to execute
+	DynAry<PpuCommand>	m_aryPpucmd;
+}; 
+
+void AppendPpuCommand(PpuCommandList * pPpucl, PCMDK pchk, u16 addr, u8 bValue, const PpuTiming & ptim);
+void UpdatePpu(Famicom * pFam, const PpuTiming & ptimEnd);
 
 union RGBA // tag = rgba 
 {
@@ -27,7 +104,6 @@ union RGBA // tag = rgba
 		u8 m_a;
 	};
 };
-
  
 enum HWCOL // HardWare COLor indices
 {
@@ -53,12 +129,12 @@ enum PPUREG : u16
 	PPUREG_OAMDMA		= 0x4014, 	// OAM DMA high address
 };
 
-union PpuControl
+union PpuControl	// tag = pctrl
 {
 	u8	m_nBits;
 	struct
 	{
-		u8	m_iBaseNametableAddr:2;		//(0==$2000, 1==$2400, 2==$2800, 3==$2C00)
+		u8	m_iBaseNameTableAddr:2;		//(0==$2000, 1==$2400, 2==$2800, 3==$2C00)
 		u8	m_dBVramAddressIncrement:1;	// (0==horizontal:add 1, 1==vertical: add 32)
 		u8	m_addrSpritePatternTable:1;	// (0==$0000, 1==$1000; ignored in 8x16 mode)
 		u8	m_addrBgPaternTable:1;		// (0==$0000, 1==$1000)
@@ -68,7 +144,7 @@ union PpuControl
 	};
 };
 
-union PpuMask
+union PpuMask		// tag = pmask
 {
 	u8	m_nBits;
 	struct
@@ -84,7 +160,7 @@ union PpuMask
 	};
 };
 
-union PpuStatus
+union PpuStatus		// tag = pstatus
 {
 	u8	m_nBits;
 	struct 
@@ -131,20 +207,29 @@ enum PADDR
 	PADDR_NameTableMirrors	= 0x3000,
 	PADDR_PaletteRam		= 0x3F00,		//bgColor, followed 8 3-color palettes where each color is one byte
 	PADDR_PaletteMirrors	= 0x3F20,
-	PADDR_VramMax			= 0xFFFF,
+	PADDR_VramMax			= 0x4000,
 };
+
 
 struct Ppu
 {
-			Ppu()
-				{ ; }
+					Ppu();
 
-	u8 		m_aBVramPhysical[kCBVramPhysical];		// 2k of physical VRAM, aka CIRAM
-	u8		m_aBChr[kCBChrMapped];					// 8k current mapped Chr rom
-//	u8 		m_aBVram[PADDR_VramMax];
+	PpuControl		m_pctrl;
+	PpuMask			m_pmask;
+	PpuStatus		m_pstatus;
 
-	OAM		m_aOam[64];	// internal OAM memory - sprite data
-	OAM		m_aOamSecondary[8];		// internal sprite memory inaccessible to the program; used to cache the sprites rendered in the current scanline. 
+	u8 				m_aBCieram[kCBCieramMax];			// 4k of physical VRAM, aka CIRAM (ppu actually only has 2k, some carts have an extra 2k
+	u8				m_aBChr[kCBChrMapped];					// 8k current mapped Chr rom
+	u8				m_aBPalette[kCBPalette];
+	u8 *			m_aPVramMap[kCBVramAddressable / s_cBVramGranularity];	// PPU memory mapping is a lot simpler than the CPU
+																			//  memory map, so we'll just use a pointer every 32 bytes
+
+	OAM				m_aOam[64];	// internal OAM memory - sprite data
+	OAM				m_aOamSecondary[8];		// internal sprite memory inaccessible to the program; used to cache the sprites rendered in the current scanline. 
+	u16				m_addrRegister;			// address used by PPUDATA $2007 and PPUSCROLL $2005
+	bool			m_fSetAddressLSB;		// address register latch 
 };
 
+void InitPpuMemoryMap(Ppu * pPpu, u8 * pBChr, int cBChr, NTMIR ntmir);
 void DrawChrMemory(Ppu * pPpu, Texture * pTex, bool fUse8x16);

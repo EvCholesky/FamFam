@@ -19,7 +19,8 @@ int main(int cpChzArg, const char * apChzArg[])
 
 	if (cpChzArg > 1)
 	{
-		bool fLoaded = FTryLoadRomFromFile(apChzArg[1], &cart, &g_fam);
+		FPOW fpow = FPOW_None;
+		bool fLoaded = FTryLoadRomFromFile(apChzArg[1], &cart, &g_fam, fpow);
 		if (!fLoaded)
 		{
 			printf("failed to load '%s'\n", apChzArg[1]);
@@ -28,6 +29,7 @@ int main(int cpChzArg, const char * apChzArg[])
 
 		u16 addrStartup = U16PeekMem(&g_fam.m_memmp, kAddrReset);
 		printf("loaded '%s'   reset vector = %x\n", apChzArg[1], addrStartup);
+
 	}
 
 	Platform plat;
@@ -44,8 +46,8 @@ int main(int cpChzArg, const char * apChzArg[])
 	ImGui_ImplGlfw_InitForOpenGL(plat.m_pGlfwin, false);
     ImGui_ImplOpenGL2_Init();
 
-//	if (!FTryAllLogTests())
-//		return 0;
+	if (!FTryAllLogTests())
+		return 0;
 
 	Debugger debug;
 	InitDebugger(&debug, &plat);
@@ -64,6 +66,8 @@ int main(int cpChzArg, const char * apChzArg[])
 		{
             ImGui::ShowDemoWindow(&fShowImguiDemoWindow);
 		}
+
+		ExecuteFamicomFrame(&g_fam);
 
 		UpdateDebugger(&debug, &plat, &g_fam);
 

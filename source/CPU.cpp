@@ -88,15 +88,18 @@ const OpInfo * POpinfoFromOpcode(u8 nOpcode)
 	return &s_mpOpcodeOpinfo[nOpcode];
 }
 
-u8 U8PeekWriteOnlyPpuReg(MemoryMap * pMemmp, u16 addr)
+u8 U8ReadPpuRegWriteOnly(Famicom * pFam, u16 addr)
 {
-	return pMemmp->m_bPrevBusPpu;
+	return pFam->m_memmp.m_bPrevBusPpu;
 }
 
-u8 U8PeekPpuStatus(MemoryMap * pMemmp, u16 addr)
+u8 U8ReadPpuStatus(Famicom * pFam, u16 addr)
 {
+	auto pMemmp = &pFam->m_memmp;
 	u8 bStatus = pMemmp->m_aBRaw[PPUREG_Status];
 	pMemmp->m_aBRaw[PPUREG_Status] &= ~0x80;
+
+	AppendPpuCommand(&pFam->m_ppucl, PCMDK_Read, addr, 0, pFam->m_ptimCpu);
 
 	u8 bRet = pMemmp->m_bPrevBusPpu & 0x1F;
 	bRet |= (bStatus & 0xE0);
@@ -105,11 +108,16 @@ u8 U8PeekPpuStatus(MemoryMap * pMemmp, u16 addr)
 	return bRet;
 }
 
-u8 U8PeekPpuReg(MemoryMap * pMemmp, u16 addr)
+u8 U8ReadPpuReg(Famicom * pFam, u16 addr)
 {
-	// BB - Probably need to split this for ppu registers that can be updated by the ppu or
-	//  registers that just let you read back what you wrote. (when we add code to run the PPU here)
+	// if this is a ppu register that is updated by the ppu we need to simulate the ppu forward
+	//  otherwise we'll just read back what the CPU write
+	if ((addr == PPUREG_Status) | (addr == PPUREG_PpuAddr))
+	{
+		UpdatePpu(pFam, pFam->m_ptimCpu);
+	}
 
+	auto pMemmp = &pFam->m_memmp;
 	u8 * pB = pMemmp->m_mpAddrPB[addr];
 
 	u8 b = *pB; 
@@ -117,9 +125,12 @@ u8 U8PeekPpuReg(MemoryMap * pMemmp, u16 addr)
 	return b;
 }
 
-void PokePpuReg(MemoryMap * pMemmp, u16 addr, u8 b)
+void WritePpuReg(Famicom * pFam, u16 addr, u8 b)
 {
+	auto pMemmp = &pFam->m_memmp;
 	const MemoryDescriptor & memdesc = pMemmp->m_mpAddrMemdesc[addr];
+
+	AppendPpuCommand(&pFam->m_ppucl, PCMDK_Write, addr, b, pFam->m_ptimCpu);
 
 	pMemmp->m_bPrevBusPpu = b;
 	u8 bDummy;
@@ -129,12 +140,7 @@ void PokePpuReg(MemoryMap * pMemmp, u16 addr, u8 b)
 
 u8 U8PeekMem(MemoryMap * pMemmp, u16 addr)
 {
-	const MemoryDescriptor & memdesc = pMemmp->m_mpAddrMemdesc[addr];
-	if (memdesc.m_iMemcb)
-	{
-		return (*pMemmp->m_aryMemcb[memdesc.m_iMemcb].m_pFnReadmem)(pMemmp, addr);
-	}
-
+	// NOTE: peek memory will not call memory callback routines
 	u8 * pB = pMemmp->m_mpAddrPB[addr];
 
 	u8 b = *pB; 
@@ -144,16 +150,11 @@ u8 U8PeekMem(MemoryMap * pMemmp, u16 addr)
 
 void PokeMemU8(MemoryMap * pMemmp, u16 addr, u8 b)
 {
-	const MemoryDescriptor & memdesc = pMemmp->m_mpAddrMemdesc[addr];
-	if (memdesc.m_iMemcb)
-	{
-		(*pMemmp->m_aryMemcb[memdesc.m_iMemcb].m_pFnWritemem)(pMemmp, addr, b);
-		return;
-	}
-
+	// NOTE: poke memory will not call memory callback routines
 	pMemmp->m_bPrevBus = b;
 
 	u8 bDummy;
+	const MemoryDescriptor & memdesc = pMemmp->m_mpAddrMemdesc[addr];
 	u8 * pB = ((memdesc.m_fmem & FMEM_ReadOnly) == 0) ? pMemmp->m_mpAddrPB[addr] : &bDummy;
 	*pB = b;
 }
@@ -777,7 +778,11 @@ FF_FORCE_INLINE void EvalOpBPL(Famicom * pFam, u16 addr)
 	TryBranch(pFam, (pFam->m_cpu.m_p & FCPU_Negative) == 0, addr);
 }
 
-FF_FORCE_INLINE void EvalOpBRK(Famicom * pFam, u16 addr) {FF_ASSERT(false, "TBD"); }
+FF_FORCE_INLINE void EvalOpBRK(Famicom * pFam, u16 addr)
+{
+	FF_ASSERT(false, "TBD"); 
+}
+
 FF_FORCE_INLINE void EvalOpBVC(Famicom * pFam, u16 addr)
 {
 	TryBranch(pFam, (pFam->m_cpu.m_p & FCPU_Overflow) == 0, addr);
@@ -1491,9 +1496,13 @@ int CChPrintCpuState(Famicom * pFam, char * pChz, int cChMax)
 {
 	const Cpu * pCpu = &pFam->m_cpu;
 	const PpuTiming * pPtim = &pFam->m_ptimCpu;
+	int cScanline;
+	int cPclockScanline;
+	SplitPclockScanline(pFam->m_ptimCpu.m_cPclock, &cScanline, &cPclockScanline);
+
 	u8 p = pCpu->m_p | FCPU_Unused;
 	int iCh = sprintf_s(pChz, cChMax, "A:%02X X:%02X Y:%02X P:%02X SP:%02X PPU:%3i,%3i CYC:%I64d", 
-		pCpu->m_a, pCpu->m_x, pCpu->m_y, p, pCpu->m_sp, pPtim->m_cPclockScanline, pPtim->m_cScanline, pCpu->m_cCycleCpu);
+		pCpu->m_a, pCpu->m_x, pCpu->m_y, p, pCpu->m_sp, cPclockScanline, cScanline, pCpu->m_cCycleCpu);
 	return iCh;
 }
 
@@ -1621,64 +1630,6 @@ bool FDoLogsMatch(
 	return fMatch;
 }
 
-static const int s_cScanlinesPerFrame = 262;
-static const int s_cScanlinesVisible = 240;
-static const int s_cPclockPerScanline = 341;
-static const int s_iCycleIdleMin = 0;
-
-// return ppu clock cycles (1 CPU cycle == 3 pclocs)
-static inline int CPclockThisFrame(PpuTiming * pTim)
-{
-	return pTim->m_cScanline * s_cPclockPerScanline + pTim->m_cPclockScanline;
-}
-
-void AdvancePpuTiming(PpuTiming * pPtim, s64 cCycleCpu, MemoryMap * pMemmp)
-{
-	int dCycle = int(cCycleCpu - pPtim->m_cCycleCpuPrev);
-	pPtim->m_cCycleCpuPrev = cCycleCpu;
-
-	bool fBackgroundEnabled = pMemmp->m_aBRaw[PPUREG_Mask] & 0x8;
-	bool fSpritesEnabled = pMemmp->m_aBRaw[PPUREG_Mask] & 0x10;
-	bool fIsRenderEnabled = fBackgroundEnabled | fSpritesEnabled;
-	bool fIsOddFrame = (pPtim->m_cFrame & 0x1) != 0;
-
-	int cPclockPrev = CPclockThisFrame(pPtim);
-	int cFramPRev = pPtim->m_cFrame;
-
-	pPtim->m_cPclockScanline += dCycle * 3;
-	if (pPtim->m_cPclockScanline >= s_cPclockPerScanline)
-	{
-		++pPtim->m_cScanline;
-		pPtim->m_cPclockScanline -= s_cPclockPerScanline;
-
-		if (pPtim->m_cScanline >= s_cScanlinesPerFrame)
-		{
-			pPtim->m_cScanline -= s_cScanlinesPerFrame;
-			++pPtim->m_cFrame;
-		}
-	}
-
-	int cPclock = CPclockThisFrame(pPtim);
-
-	static const int s_pclockVBlankSet = 241 * s_cPclockPerScanline + 1; // vblank happens on the first cycle of the 241st scanline of a frame.
-	static const int s_pclockStatusClear = 261 * s_cPclockPerScanline + 1; // vblank is cleared  on the first cycle of the prerender scanline.
-	if (fIsRenderEnabled && fIsOddFrame && cFramPRev != pPtim->m_cFrame)
-	{
-		// Odd frames (with rendering enabled) are one cycle shorter - this cycle is dropped from the
-		//  first idle cycle of the  first scanline
-		++pPtim->m_cPclockScanline;
-	}
-
-	if (s_pclockVBlankSet > cPclockPrev && s_pclockVBlankSet <= cPclock)
-	{
-		pMemmp->m_aBRaw[PPUREG_Status] |= 0x80;
-	}
-	else if (s_pclockStatusClear > cPclockPrev && s_pclockStatusClear <= cPclock)
-	{
-		pMemmp->m_aBRaw[PPUREG_Status] = 0;
-	}
-}
-
 static const int s_cLlineHistory = 100; 
 static const int s_cChLine = 128; 
 struct LogHistory;
@@ -1739,16 +1690,13 @@ bool FTryRunLogTest(const char * pChzFilenameRom, const char * pChzFilenameLog, 
 	Cart cart;
 	fam.m_pCart = &cart;
 
-	u16 fpow = FPOW_LogTest;
-	SetPowerUpPreLoad(&fam, fpow);
-
-	if (!FTryLoadRomFromFile(pChzFilenameRom, &cart, &fam))
+	FPOW fpow = FPOW_LogTest;
+	if (!FTryLoadRomFromFile(pChzFilenameRom, &cart, &fam, fpow))
 	{
 		ShowError("Could not load log test rom file '%s'", pChzFilenameRom);
 		return false;
 	}
 
-	SetPowerUpState(&fam, fpow);
 	if (addrStart >= 0)
 	{
 		fam.m_cpu.m_pc = u16(addrStart);
@@ -1769,6 +1717,7 @@ bool FTryRunLogTest(const char * pChzFilenameRom, const char * pChzFilenameLog, 
 	char aChLog[128];
 	int cLineLog = 0;
 	int cStep = 0;
+	auto cFramePrev = CFrameFromCPclock(fam.m_ptimCpu.m_cPclock);
 	while (pBLogIt != pBLogMax)
 	{
 		LogLine * pLline = PLlineAppend(&lhist);
@@ -1790,6 +1739,13 @@ bool FTryRunLogTest(const char * pChzFilenameRom, const char * pChzFilenameLog, 
 		pBLogIt += cChAdvance;
 
 		StepCpu(&fam);
+
+		auto cFrameNew = CFrameFromCPclock(fam.m_ptimCpu.m_cPclock);
+		if (cFrameNew != cFramePrev)
+		{
+			// update the ppu command list to avoid overflowing
+			UpdatePpu(&fam, fam.m_ptimCpu);
+		}
 	}
 
 	printf("Test '%s' success at cycle %lld\n", pChzFilenameLog, fam.m_cpu.m_cCycleCpu);
@@ -1827,5 +1783,18 @@ bool FTryAllLogTests()
 		}
 	}
 	return true;
+}
+
+void ExecuteFamicomFrame(Famicom * pFam)
+{
+	// run the CPU from cycle 0 until the last cycle of the last pixel of scanline 261
+
+	s64 cFramePrev = CFrameFromCPclock(pFam->m_ptimCpu.m_cPclock);
+	while (cFramePrev == CFrameFromCPclock(pFam->m_ptimCpu.m_cPclock))
+	{
+		StepCpu(pFam);
+	}
+
+	UpdatePpu(pFam, pFam->m_ptimCpu);
 }
 
