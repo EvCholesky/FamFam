@@ -33,7 +33,7 @@ struct Texture
 	short		m_dX;
 	short		m_dY;
 	s32			m_nId;
-	s8 *		m_pB;
+	u8 *		m_pB;
 };
 
 Texture * PTexCreate(Platform * pPlat, s16 dX, s16 dY);

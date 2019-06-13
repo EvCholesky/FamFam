@@ -144,7 +144,8 @@ void InitDebugger(Debugger * pDebug, Platform * pPlat)
 	pDebug->m_ppuwin.m_pTexChr = PTexCreate(pPlat, s_dXChrHalf * 2, s_dYChrHalf);
 	pDebug->m_ppuwin.m_fChrNeedsRefresh = true;
 
-	//pDebug->m_pTexNametable;
+	static const int s_dXYNametable = 32 * 8 * 2;
+	pDebug->m_ntwin.m_pTex = PTexCreate(pPlat, s_dXYNametable, s_dXYNametable);
 
 	/*
 	// build pallet stripes
@@ -174,6 +175,11 @@ void UpdateDebugger(Debugger * pDebug, Platform * pPlat, Famicom * pFam)
 	if (pDebug->m_fShowRegisterWindow)
 	{
 		UpdateRegisterWindow(pFam, &pDebug->m_fShowRegisterWindow);
+	}
+
+	if (pDebug->m_ntwin.m_fShowWindow)
+	{
+		UpdateNameTableWindow(pDebug, pFam, pPlat);
 	}
 
 	if (pDebug->m_ppuwin.m_fShowWindow)
@@ -490,6 +496,29 @@ void UpdateChrWindow(Debugger * pDebug, Famicom * pFam, Platform * pPlat)
 	{
 		pPpuwin->m_fChrNeedsRefresh = true;
 	}
+
+    ImGui::End();
+}
+
+void UpdateNameTableWindow(Debugger * pDebug, Famicom * pFam, Platform * pPlat)
+{
+	auto pNtwin = &pDebug->m_ntwin;
+
+	s64 cFrame = CFrameFromCPclock(pFam->m_cPclockPpu);
+	if (cFrame % pNtwin->m_cFrameRefresh == 0)
+	{
+		DrawNameTableMemory(&pFam->m_ppu, pNtwin->m_pTex);
+		UploadTexture(pPlat, pNtwin->m_pTex);
+	}
+
+    ImGui::SetNextWindowSize(ImVec2(300,300), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Name Tables", &pNtwin->m_fShowWindow))
+    {
+        ImGui::End();
+        return;
+    }
+
+	ImGui::Image((void*)(intptr_t)pNtwin->m_pTex->m_nId, ImVec2(512, 512));
 
     ImGui::End();
 }

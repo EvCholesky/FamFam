@@ -99,7 +99,7 @@ u8 U8ReadPpuStatus(Famicom * pFam, u16 addr)
 	u8 bStatus = pMemmp->m_aBRaw[PPUREG_Status];
 	pMemmp->m_aBRaw[PPUREG_Status] &= ~0x80;
 
-	AppendPpuCommand(&pFam->m_ppucl, PCMDK_Read, addr, 0, pFam->m_ptimCpu);
+	AppendPpuCommand(&pFam->m_ppucl, PCMDK_Read, addr, 0, pFam->m_ptimCpu, pFam->m_cpu.m_pc);
 
 	u8 bRet = pMemmp->m_bPrevBusPpu & 0x1F;
 	bRet |= (bStatus & 0xE0);
@@ -130,7 +130,7 @@ void WritePpuReg(Famicom * pFam, u16 addr, u8 b)
 	auto pMemmp = &pFam->m_memmp;
 	const MemoryDescriptor & memdesc = pMemmp->m_mpAddrMemdesc[addr];
 
-	AppendPpuCommand(&pFam->m_ppucl, PCMDK_Write, addr, b, pFam->m_ptimCpu);
+	AppendPpuCommand(&pFam->m_ppucl, PCMDK_Write, addr, b, pFam->m_ptimCpu, pFam->m_cpu.m_pc);
 
 	pMemmp->m_bPrevBusPpu = b;
 	u8 bDummy;

@@ -77,6 +77,7 @@ struct PpuCommand  // tag = ppucmd
 	u8				m_bValue;
 	PCMDK			m_pcmdk;
 	u16				m_addr;
+	u16				m_addrInstDebug;	// address of the instruction that caused this command
 	u64				m_cPclock;	 // BB - could save space if these were stored as dPclock, and we adjusted when we removed the executed spans  
 };
 
@@ -90,7 +91,7 @@ struct PpuCommandList // tag = ppucl
 	DynAry<PpuCommand>	m_aryPpucmd;
 }; 
 
-void AppendPpuCommand(PpuCommandList * pPpucl, PCMDK pchk, u16 addr, u8 bValue, const PpuTiming & ptim);
+void AppendPpuCommand(PpuCommandList * pPpucl, PCMDK pchk, u16 addr, u8 bValue, const PpuTiming & ptim, u16 addrDebug);
 void UpdatePpu(Famicom * pFam, const PpuTiming & ptimEnd);
 
 union RGBA // tag = rgba 
@@ -136,8 +137,8 @@ union PpuControl	// tag = pctrl
 	{
 		u8	m_iBaseNameTableAddr:2;		//(0==$2000, 1==$2400, 2==$2800, 3==$2C00)
 		u8	m_dBVramAddressIncrement:1;	// (0==horizontal:add 1, 1==vertical: add 32)
-		u8	m_addrSpritePatternTable:1;	// (0==$0000, 1==$1000; ignored in 8x16 mode)
-		u8	m_addrBgPaternTable:1;		// (0==$0000, 1==$1000)
+		u8	m_fHighSpritePatternTable:1;// (0==$0000, 1==$1000; ignored in 8x16 mode)
+		u8	m_fHighBgPaternTable:1;		// (0==$0000, 1==$1000)
 		u8	m_sizeSptrite:1;			// (0==8x8; 1==3x16)
 		u8	m_fMasterSlaveSelect:1;		// (0==read backdrop from ext pins; 1==output color on ext pins)
 		u8	m_fGenerateVBlankNMI:1;		// generate an NMI at the start of the vertical blanking interval
@@ -233,3 +234,4 @@ struct Ppu
 
 void InitPpuMemoryMap(Ppu * pPpu, u8 * pBChr, int cBChr, NTMIR ntmir);
 void DrawChrMemory(Ppu * pPpu, Texture * pTex, bool fUse8x16);
+void DrawNameTableMemory(Ppu * pPpu, Texture * pTex);

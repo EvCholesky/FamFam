@@ -25,7 +25,7 @@ void ClearPpuCommandList(PpuCommandList * pPpucl)
 	pPpucl->m_aryPpucmd.Clear();
 }
 
-void AppendPpuCommand(PpuCommandList * pPpucl, PCMDK pcmdk, u16 addr, u8 bValue, const PpuTiming & ptim)
+void AppendPpuCommand(PpuCommandList * pPpucl, PCMDK pcmdk, u16 addr, u8 bValue, const PpuTiming & ptim, u16 addrDebug)
 {
 #if DEBUG
 	auto pPpucmdPrev = pPpucl->m_aryPpucmd.PLast();
@@ -38,11 +38,12 @@ void AppendPpuCommand(PpuCommandList * pPpucl, PCMDK pcmdk, u16 addr, u8 bValue,
 	pPpucmd->m_pcmdk = pcmdk;
 	pPpucmd->m_bValue = bValue;
 	pPpucmd->m_cPclock = ptim.m_cPclock;
+	pPpucmd->m_addrInstDebug = addrDebug;
 }
 
 u8 * PBVram(Ppu * pPpu, u16 addr)
 {
-	FF_ASSERT(addr < kCBVramAddressable, "bad vram address");
+	addr &= 0x3FFF;
 	u8 * pBGranule = pPpu->m_aPVramMap[addr / s_cBVramGranularity];
 	return pBGranule + (addr % s_cBVramGranularity);
 }
@@ -71,7 +72,7 @@ void UpdatePpu(Famicom * pFam, const PpuTiming & ptimEnd)
 			{
 				switch (pPpucmd->m_addr)
 				{
-					case PPUREG_Ctrl:
+					case PPUREG_Status:
 					{
 						// reading from PPUCTRL $2000 clears the address latch used by PPUSCROLL and PPUADDR
 						pPpu->m_fSetAddressLSB = false;
@@ -108,10 +109,12 @@ void UpdatePpu(Famicom * pFam, const PpuTiming & ptimEnd)
 						if (pPpu->m_fSetAddressLSB)	
 						{
 							addr = (addr & 0xFF00) | u16(pPpucmd->m_bValue);
+							//printf("setUpper addr = $%04x\n", addr);
 						}
 						else
 						{
-							addr = (pPpucmd->m_bValue & 0x0FF) | (addr & 0x00FF);
+							addr = (u16(pPpucmd->m_bValue) << 8) | (addr & 0x00FF);
+							//printf("setLower addr = $%04x\n", addr);
 						}
 						FF_ASSERT(addr < kCBVramAddressable, "bad address");
 
@@ -120,13 +123,10 @@ void UpdatePpu(Famicom * pFam, const PpuTiming & ptimEnd)
 					} break;
 				case PPUREG_PpuData:
 					{
-						if (pPpu->m_addrRegister == 0x301f)
-						{
-							printf("");
-						}
-
 						u8 * pB = PBVram(pPpu, pPpu->m_addrRegister);
 						*pB = pPpucmd->m_bValue;
+						static int s_index = 0;
+						//printf("%02X%s", pPpucmd->m_bValue, ((s_index++ % 32) == 31) ? "\n" : ",");
 
 						pPpu->m_addrRegister += (pPpu->m_pctrl.m_dBVramAddressIncrement) ? 32 : 1;
 					} break;
@@ -228,11 +228,11 @@ RGBA RgbaFromHwcol(HWCOL hwcol)
 {
 	// lifted from https://github.com/AndreaOrru/LaiNES/blob/master/src/palette.inc
 	static const RGBA s_mpIcolRgba[] =
-	{ 
-		0x7C7C7C, 0x0000FC, 0x0000BC, 0x4428BC, 0x940084, 0xA80020, 0xA81000, 0x881400, 0x503000, 0x007800, 0x006800, 0x005800, 0x004058, 0x000000, 0x000000, 0x000000,
-		0xBCBCBC, 0x0078F8, 0x0058F8, 0x6844FC, 0xD800CC, 0xE40058, 0xF83800, 0xE45C10, 0xAC7C00, 0x00B800, 0x00A800, 0x00A844, 0x008888, 0x000000, 0x000000, 0x000000,
-		0xF8F8F8, 0x3CBCFC, 0x6888FC, 0x9878F8, 0xF878F8, 0xF85898, 0xF87858, 0xFCA044, 0xF8B800, 0xB8F818, 0x58D854, 0x58F898, 0x00E8D8, 0x787878, 0x000000, 0x000000,
-		0xFCFCFC, 0xA4E4FC, 0xB8B8F8, 0xD8B8F8, 0xF8B8F8, 0xF8A4C0, 0xF0D0B0, 0xFCE0A8, 0xF8D878, 0xD8F878, 0xB8F8B8, 0xB8F8D8, 0x00FCFC, 0xF8D8F8, 0x000000, 0x000000
+	{																														
+		0xFF7C7C7C, 0xFFFC0000, 0xFFBC0000, 0xFFBC2844, 0xFF840094, 0xFF2000A8, 0xFF0010A8, 0xFF001488, 0xFF003050, 0xFF007800, 0xFF006800, 0xFF005800, 0xFF584000, 0xFF000000, 0xFF000000, 0xFF000000,
+		0xFFBCBCBC, 0xFFF87800, 0xFFF85800, 0xFFFC4468, 0xFFCC00D8, 0xFF5800E4, 0xFF0038F8, 0xFF105CE4, 0xFF007CAC, 0xFF00B800, 0xFF00A800, 0xFF44A800, 0xFF888800, 0xFF000000, 0xFF000000, 0xFF000000,
+		0xFFF8F8F8, 0xFFFCBC3C, 0xFFFC8868, 0xFFF87898, 0xFFF878F8, 0xFF9858F8, 0xFF5878F8, 0xFF44A0FC, 0xFF00B8F8, 0xFF18F8B8, 0xFF54D858, 0xFF98F858, 0xFFD8E800, 0xFF787878, 0xFF000000, 0xFF000000,
+		0xFFFCFCFC, 0xFFFCE4A4, 0xFFF8B8B8, 0xFFF8B8D8, 0xFFF8B8F8, 0xFFC0A4F8, 0xFFB0D0F0, 0xFFA8E0FC, 0xFF78D8F8, 0xFF78F8D8, 0xFFB8F8B8, 0xFFD8F8B8, 0xFFFCFC00, 0xFFF8D8F8, 0xFF000000, 0xFF000000
 	};
 
 	if (hwcol < HWCOL_Min || hwcol >= HWCOL_Max)
@@ -259,6 +259,7 @@ void MapPpuMemorySpan(Ppu * pPpu, u16 addrMin, u8 * pB, int cB)
 
 void InitPpuMemoryMap(Ppu * pPpu, u8 * pBChr, int cBChr, NTMIR ntmir)
 {
+	ZeroAB(pPpu->m_aPVramMap, FF_DIM(pPpu->m_aPVramMap));
 	CopyAB(pBChr, pPpu->m_aBChr, cBChr);
 
 	FF_ASSERT(cBChr == FF_KIB(8), "expected 8k, need to handle odd size");
@@ -303,7 +304,7 @@ void InitPpuMemoryMap(Ppu * pPpu, u8 * pBChr, int cBChr, NTMIR ntmir)
 	MapPpuMemorySpan(pPpu, 0x3000, PBVram(pPpu, PADDR_NameTable0), s_cBNameTable);
 	MapPpuMemorySpan(pPpu, 0x3400, PBVram(pPpu, PADDR_NameTable1), s_cBNameTable);
 	MapPpuMemorySpan(pPpu, 0x3800, PBVram(pPpu, PADDR_NameTable2), s_cBNameTable);
-	MapPpuMemorySpan(pPpu, 0x3C00, PBVram(pPpu, PADDR_NameTable3), s_cBNameTable - kCBPalette);
+	MapPpuMemorySpan(pPpu, 0x3C00, PBVram(pPpu, PADDR_NameTable3), 0x3F00 - 0x3C00);
 
 	// palettes
 	u16 addrPalette = PADDR_PaletteRam;
@@ -311,6 +312,105 @@ void InitPpuMemoryMap(Ppu * pPpu, u8 * pBChr, int cBChr, NTMIR ntmir)
 	{
 		MapPpuMemorySpan(pPpu, addrPalette, pPpu->m_aBPalette, kCBPalette);
 		addrPalette += kCBPalette;
+	}
+}
+
+static const int s_dXTileScreen = 32;
+static const int s_dYTileScreen = 30;
+inline u16 FetchNametableLine(Ppu * pPpu, u16 addrBase, int xTile, int yTile, int ySubtile, u8 * pBIndices, u8 * pIAttribute)
+{
+	// return an array of 8 palette indices and the corresponding pallete index
+
+	//FF_ASSERT(addr >= PADDR_NameTable0 && addr <= PADDR_PaletteRam, "bad nametable entry");
+
+	// look up the nametable entry
+	u8 * pBNameTable = PBVram(pPpu, addrBase);
+	u16 iTile = pBNameTable[xTile + yTile * s_dXTileScreen];
+	//u16 iTile = (xTile + yTile * s_dXTileScreen) & 0xFF;
+
+	u16 addrPattern = (pPpu->m_pctrl.m_fHighBgPaternTable) ? 0x1000 : 0x0;
+	u8 * pBPattern = PBVram(pPpu, addrPattern);
+
+	int dB = (ySubtile & 0x7) | (iTile << 4);
+	u8 bPlane0 = pBPattern[dB];
+	u8 bPlane1 = pBPattern[dB | 0x8];
+
+	for (int xSubtile = 0; xSubtile < 8; ++xSubtile)
+	{
+		pBIndices[xSubtile] = (bPlane0 & 0x1) | ((bPlane1 & 0x1) << 1);
+		bPlane0 >>= 1;
+		bPlane1 >>= 1;
+	}
+
+	static const int s_dXAttributeCell = 8;
+	static const int s_dBAttribute = s_dXTileScreen * s_dYTileScreen;
+	u8 * pBAttribute = pBNameTable + s_dBAttribute;
+
+	u8 bAttribute = pBAttribute[(xTile>>2) + ((yTile>>2) * s_dXAttributeCell)];
+	int xCell = xTile >> 1;
+	int yCell = yTile >> 1;
+	int cBitShift = (xCell & 0x1) ? 2 : 0;
+	cBitShift += (yCell & 0x1) ? 4 : 0;
+	*pIAttribute = (bAttribute >> cBitShift) & 0x3;
+
+	return iTile;
+}
+
+void DrawNameTableMemory(Ppu * pPpu, Texture * pTex)
+{
+	u8 aIBitmap[8];
+	u8 iPalette;
+
+	// look up hwcol palettes
+	/*
+	HWCOL aHwcolPalette[4 * 4];
+	static_assert(sizeof(aHwcolPalette) == sizeof(pPpu->m_aBPalette), "palette size mismatch");
+	CopyAB(m_aBPalette, aHwcolPalette, sizeof(aHwcolPalette));
+	HWCOL hwcolBackground = aHwcolPalette[0];
+	aHwcolPalette[0x4] = hwcolBackground;
+	aHwcolPalette[0x8] = hwcolBackground;
+	aHwcolPalette[0xC] = hwcolBackground;
+	*/
+
+	static const int s_cRgbaPalette = 4;
+	static const int s_cPalette = 4;
+	RGBA aRgba[s_cRgbaPalette * s_cPalette];
+	RGBA RgbaFromHwcol(HWCOL hwcol);
+	for (int iRgb = 0; iRgb < FF_DIM(aRgba); ++iRgb)
+	{
+		// the first index in each palette is the shared background color
+		int iHwcol = ((iRgb % s_cRgbaPalette) == 0) ? 0 : iRgb;
+		//aRgba[iRgb] = RgbaFromHwcol(HWCOL(pPpu->m_aBPalette[iHwcol]));
+		aRgba[iRgb] = RgbaFromHwcol(HWCOL(((iHwcol & 0x3) << 4) | 0x6));
+	}
+
+//	printf("\n\n");
+	static const int s_dXSubtile = 8;
+	static const int s_dYSubtile = 8;
+	static const u16 s_addrBase = 0x2400;
+	int dXStride = pTex->m_dX;
+	for (int yTile = 0; yTile < s_dYTileScreen; ++yTile)
+	{
+		for (int ySubtile = 0; ySubtile < s_dYSubtile; ++ySubtile)
+		{
+			for (int xTile = 0; xTile < s_dXTileScreen; ++xTile)
+			{
+				//addrFetch = s_addrBase + yTile * s_dXTileScreen;
+				auto iTile = FetchNametableLine(pPpu, s_addrBase, xTile, yTile, ySubtile, aIBitmap, &iPalette);
+//				printf("%d,", iTile);
+
+				int dB = (xTile*s_dXSubtile + ((yTile*s_dYSubtile)+ ySubtile) * dXStride) * 3;
+				u8 * pB = pTex->m_pB + dB;
+				for (int xSubtile = 0; xSubtile < s_dXSubtile; ++xSubtile)
+				{
+					RGBA rgba = aRgba[aIBitmap[xSubtile] + iPalette * s_cRgbaPalette];
+					*pB++ = rgba.m_r;
+					*pB++ = rgba.m_g;
+					*pB++ = rgba.m_b;
+				}
+			}
+//			printf("\n");
+		}
 	}
 }
 
@@ -378,10 +478,3 @@ void DrawChrMemory(Ppu * pPpu, Texture * pTex, bool fUse8x16)
 	}
 }
 
-
-
-void DrawNametables()
-{
-	// 30x32 table where each byte corresponds with one 8-pixel x 8-pixel region
-
-}

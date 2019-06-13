@@ -107,7 +107,7 @@ Texture * PTexCreate(Platform * pPlat, s16 dX, s16 dY)
 	auto pTex = new Texture;
 	pTex->m_dX = dX;
 	pTex->m_dY = dY;
-	pTex->m_pB = new s8[dX * dY * 3];
+	pTex->m_pB = new u8[dX * dY * 3];
 
 	glGenTextures(1, (GLuint*)&pTex->m_nId);
 	glBindTexture(GL_TEXTURE_2D, pTex->m_nId);
@@ -123,6 +123,7 @@ Texture * PTexCreate(Platform * pPlat, s16 dX, s16 dY)
 
 void UploadTexture(Platform * pPlat, Texture * pTex)
 {
+	glBindTexture(GL_TEXTURE_2D, pTex->m_nId);
 	glTexImage2D(
 		GL_TEXTURE_2D,			// target	
 		0,						// level

@@ -22,6 +22,19 @@ struct PpuWindow // tag = ppuwin
 
 };
 
+struct NameTableWindow // tag = ntwin
+{
+					NameTableWindow()
+					:m_fShowWindow(true)
+					,m_cFrameRefresh(2)
+					,m_pTex(nullptr)
+						{ ; }
+
+	bool			m_fShowWindow;
+	int				m_cFrameRefresh;
+	Texture *		m_pTex;
+};
+
 struct Debugger // tag = debug
 {
 					Debugger()
@@ -34,6 +47,7 @@ struct Debugger // tag = debug
 	bool			m_fShowRegisterWindow;
 	Texture *		m_pTexNametable;
 	PpuWindow		m_ppuwin;
+	NameTableWindow	m_ntwin;
 
 
 };
@@ -44,3 +58,4 @@ void UpdateDebugger(Debugger * pDebug, Platform * pPlat, Famicom * pFam);
 void UpdateDisassemblyWindow(Famicom * pFam, bool * pFShowWindow);
 void UpdateRegisterWindow(Famicom * pFam, bool * pFShowWindow);
 void UpdateChrWindow(Debugger * pDebug, Famicom * pFam, Platform * pPlat);
+void UpdateNameTableWindow(Debugger * pDebug, Famicom * pFam, Platform * pPlat);
