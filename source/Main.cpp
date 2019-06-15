@@ -46,8 +46,8 @@ int main(int cpChzArg, const char * apChzArg[])
 	ImGui_ImplGlfw_InitForOpenGL(plat.m_pGlfwin, false);
     ImGui_ImplOpenGL2_Init();
 
-	if (!FTryAllLogTests())
-		return 0;
+//	if (!FTryAllLogTests())
+//		return 0;
 
 	Debugger debug;
 	InitDebugger(&debug, &plat);

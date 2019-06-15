@@ -7,8 +7,10 @@ Ppu::Ppu()
 :m_pctrl{0}
 ,m_pmask{0}
 ,m_pstatus{0}
-,m_addrRegister(0)
-,m_fSetAddressLSB(false)
+,m_addrV(0)
+,m_addrTemp(0)
+,m_dXScrollFine(0)
+,m_fIsFirstAddrWrite(true)
 {
 	ZeroAB(m_aBCieram, FF_DIM(m_aBCieram));
 	ZeroAB(m_aBChr, FF_DIM(m_aBChr));
@@ -75,13 +77,13 @@ void UpdatePpu(Famicom * pFam, const PpuTiming & ptimEnd)
 					case PPUREG_Status:
 					{
 						// reading from PPUCTRL $2000 clears the address latch used by PPUSCROLL and PPUADDR
-						pPpu->m_fSetAddressLSB = false;
+						pPpu->m_fIsFirstAddrWrite = true;
 					} break;
 					case PPUREG_PpuData:
 					{
 						FF_ASSERT(false, "TBD");
 
-						pPpu->m_addrRegister += (pPpu->m_pctrl.m_dBVramAddressIncrement) ? 1 : 32;
+						//pPpu->m_addrRegister += (pPpu->m_pctrl.m_dBVramAddressIncrement) ? 1 : 32;
 					} break;
 					default:
 						break;
@@ -103,32 +105,49 @@ void UpdatePpu(Famicom * pFam, const PpuTiming & ptimEnd)
 					break;
 
 				case PPUREG_PpuScroll:
-				case PPUREG_PpuAddr:
 					{
-						u16 addr = pPpu->m_addrRegister;
-						if (pPpu->m_fSetAddressLSB)	
+						if (pPpu->m_fIsFirstAddrWrite)
 						{
-							addr = (addr & 0xFF00) | u16(pPpucmd->m_bValue);
-							//printf("setUpper addr = $%04x\n", addr);
+							u16 addrT = (pPpu->m_addrTemp & 0xFFE0) | u16(pPpucmd->m_bValue & 0x7F);
+							pPpu->m_addrTemp = addrT;
+							pPpu->m_dXScrollFine = pPpucmd->m_bValue & 0x7;
 						}
 						else
 						{
-							addr = (u16(pPpucmd->m_bValue) << 8) | (addr & 0x00FF);
-							//printf("setLower addr = $%04x\n", addr);
+							u16 addrT = pPpu->m_addrTemp & 0x181F;
+							addrT |= u16(pPpucmd->m_bValue & 0x7) << 13;
+							addrT |= u16(pPpucmd->m_bValue & 0xF8) << 5;
+							pPpu->m_addrTemp = addrT;
+							 // doesn't set addr s here, it will be set when drawing starts ()
 						}
-						FF_ASSERT(addr < kCBVramAddressable, "bad address");
 
-						pPpu->m_addrRegister = addr;
-						pPpu->m_fSetAddressLSB = true;
+						pPpu->m_fIsFirstAddrWrite = !pPpu->m_fIsFirstAddrWrite;
+					} break;
+				case PPUREG_PpuAddr:
+					{
+						if (pPpu->m_fIsFirstAddrWrite)
+						{
+							u16 addrT = pPpu->m_addrTemp;
+							pPpu->m_addrTemp = (u16(pPpucmd->m_bValue & 0x7F) << 8) | (addrT & 0x00FF);
+						}
+						else 
+						{
+							u16 addrT = pPpu->m_addrTemp;
+							addrT = (addrT & 0xFF00) | u16(pPpucmd->m_bValue);
+							pPpu->m_addrTemp = addrT;
+							pPpu->m_addrV = addrT;
+						}
+
+						pPpu->m_fIsFirstAddrWrite = !pPpu->m_fIsFirstAddrWrite;
 					} break;
 				case PPUREG_PpuData:
 					{
-						u8 * pB = PBVram(pPpu, pPpu->m_addrRegister);
+						u8 * pB = PBVram(pPpu, pPpu->m_addrV);
 						*pB = pPpucmd->m_bValue;
 						static int s_index = 0;
-						//printf("%02X%s", pPpucmd->m_bValue, ((s_index++ % 32) == 31) ? "\n" : ",");
+					//	printf("%02X%s", pPpucmd->m_bValue, ((s_index++ % 32) == 31) ? "\n" : ",");
 
-						pPpu->m_addrRegister += (pPpu->m_pctrl.m_dBVramAddressIncrement) ? 32 : 1;
+						pPpu->m_addrV += (pPpu->m_pctrl.m_dBVramAddressIncrement) ? 32 : 1;
 					} break;
 				default:
 					break;
@@ -145,8 +164,9 @@ void UpdatePpu(Famicom * pFam, const PpuTiming & ptimEnd)
 	pPpucl->m_iPpucmdExecute = 0;
 }
 
-void AdvancePpuTiming(PpuTiming * pPtim, s64 cCycleCpu, MemoryMap * pMemmp)
+void AdvancePpuTiming(Famicom * pFam, s64 cCycleCpu, MemoryMap * pMemmp)
 {
+	PpuTiming * pPtim = &pFam->m_ptimCpu;
 	int dCycle = int(cCycleCpu - pPtim->m_cCycleCpuPrev);
 	pPtim->m_cCycleCpuPrev = cCycleCpu;
 
@@ -158,46 +178,11 @@ void AdvancePpuTiming(PpuTiming * pPtim, s64 cCycleCpu, MemoryMap * pMemmp)
 	s64 cPclockSubframePrev;
 	SplitPclockFrame(pPtim->m_cPclock, &cFramePrev, &cPclockSubframePrev);
 
-#define TEST_OLD_PPU_TIMING 0
-#if TEST_OLD_PPU_TIMING
-	int cScanlinePrev;
-	int cPclockScanlinePrev;
-	SplitPclockScanline(pPtim->m_cPclock, &cScanlinePrev, &cPclockScanlinePrev);
-#endif
-
 	pPtim->m_cPclock += dCycle * s_cPclockPerCpuCycle;
 
 	s64 cFrame;
 	s64 cPclockSubframe;
 	SplitPclockFrame(pPtim->m_cPclock, &cFrame, &cPclockSubframe);
-
-#if TEST_OLD_PPU_TIMING
-	s64 cFrameTest = cFramePrev;
-	s64 cScanlineTest = cScanlinePrev;
-	s64 cPclockScanlineTest = cPclockScanlinePrev;
-
-	cPclockScanlineTest += dCycle * 3;
-	if (cPclockScanlineTest >= s_cPclockPerScanline)
-	{
-		++cScanlineTest;
-		cPclockScanlineTest -= s_cPclockPerScanline;
-
-		if (cScanlineTest >= s_cScanlinesPerFrame)
-		{
-			cScanlineTest -= s_cScanlinesPerFrame;
-			++cFrameTest;
-		}
-	}
-
-	//int cPclock = CPclockThisFrame(pPtim);
-
-	int cScanline;
-	int cPclockScanline;
-	SplitPclockScanline(pPtim->m_cPclock, &cScanline, &cPclockScanline);
-	FF_ASSERT(cFrame == cFrameTest, "bad frame  count");
-	FF_ASSERT(cScanline == cScanlineTest, "bad scanline  count");
-	FF_ASSERT(cPclockScanline == cPclockScanlineTest, "bad pclock  count");
-#endif
 
 	// NOTE: we're skipping the first pclock following an odd frame.
 	bool fIsOddFrame = (cFramePrev & 0x1) != 0;
@@ -216,6 +201,12 @@ void AdvancePpuTiming(PpuTiming * pPtim, s64 cCycleCpu, MemoryMap * pMemmp)
 
 	if (s_pclockVBlankSet > cPclockSubframePrev && s_pclockVBlankSet <= cPclockSubframe)
 	{
+		// this doesn't handle toggling nmi_output while vblank is set
+		bool fNmiOutput = pMemmp->m_aBRaw[PPUREG_Ctrl] & 0x80;
+		if (fNmiOutput)
+		{
+			pFam->m_cpu.m_fTriggerNmi = true;
+		}
 		pMemmp->m_aBRaw[PPUREG_Status] |= 0x80;
 	}
 	else if (s_pclockStatusClear > cPclockSubframePrev && s_pclockStatusClear <= cPclockSubframe)
@@ -337,9 +328,8 @@ inline u16 FetchNametableLine(Ppu * pPpu, u16 addrBase, int xTile, int yTile, in
 
 	for (int xSubtile = 0; xSubtile < 8; ++xSubtile)
 	{
-		pBIndices[xSubtile] = (bPlane0 & 0x1) | ((bPlane1 & 0x1) << 1);
-		bPlane0 >>= 1;
-		bPlane1 >>= 1;
+		int nShift = 7-xSubtile;
+		pBIndices[xSubtile] = ((bPlane0 >> nShift) & 0x1) | (((bPlane1 >> nShift) & 0x1) << 1);
 	}
 
 	static const int s_dXAttributeCell = 8;
@@ -380,26 +370,23 @@ void DrawNameTableMemory(Ppu * pPpu, Texture * pTex)
 	{
 		// the first index in each palette is the shared background color
 		int iHwcol = ((iRgb % s_cRgbaPalette) == 0) ? 0 : iRgb;
-		//aRgba[iRgb] = RgbaFromHwcol(HWCOL(pPpu->m_aBPalette[iHwcol]));
-		aRgba[iRgb] = RgbaFromHwcol(HWCOL(((iHwcol & 0x3) << 4) | 0x6));
+		aRgba[iRgb] = RgbaFromHwcol(HWCOL(pPpu->m_aBPalette[iHwcol]));
 	}
 
-//	printf("\n\n");
 	static const int s_dXSubtile = 8;
 	static const int s_dYSubtile = 8;
-	static const u16 s_addrBase = 0x2400;
 	int dXStride = pTex->m_dX;
+	int dBNametableX = 32 * 8 * 3;
+	int dBNametableY = 30 * 8 * 3 * dXStride;
 	for (int yTile = 0; yTile < s_dYTileScreen; ++yTile)
 	{
 		for (int ySubtile = 0; ySubtile < s_dYSubtile; ++ySubtile)
 		{
 			for (int xTile = 0; xTile < s_dXTileScreen; ++xTile)
 			{
-				//addrFetch = s_addrBase + yTile * s_dXTileScreen;
-				auto iTile = FetchNametableLine(pPpu, s_addrBase, xTile, yTile, ySubtile, aIBitmap, &iPalette);
-//				printf("%d,", iTile);
-
 				int dB = (xTile*s_dXSubtile + ((yTile*s_dYSubtile)+ ySubtile) * dXStride) * 3;
+
+				auto iTile = FetchNametableLine(pPpu, 0x2000, xTile, yTile, ySubtile, aIBitmap, &iPalette);
 				u8 * pB = pTex->m_pB + dB;
 				for (int xSubtile = 0; xSubtile < s_dXSubtile; ++xSubtile)
 				{
@@ -408,8 +395,37 @@ void DrawNameTableMemory(Ppu * pPpu, Texture * pTex)
 					*pB++ = rgba.m_g;
 					*pB++ = rgba.m_b;
 				}
+
+				FetchNametableLine(pPpu, 0x2400, xTile, yTile, ySubtile, aIBitmap, &iPalette);
+				pB = pTex->m_pB + dB + dBNametableX;
+				for (int xSubtile = 0; xSubtile < s_dXSubtile; ++xSubtile)
+				{
+					RGBA rgba = aRgba[aIBitmap[xSubtile] + iPalette * s_cRgbaPalette];
+					*pB++ = rgba.m_r;
+					*pB++ = rgba.m_g;
+					*pB++ = rgba.m_b;
+				}
+
+				FetchNametableLine(pPpu, 0x2800, xTile, yTile, ySubtile, aIBitmap, &iPalette);
+				pB = pTex->m_pB + dB + dBNametableY;
+				for (int xSubtile = 0; xSubtile < s_dXSubtile; ++xSubtile)
+				{
+					RGBA rgba = aRgba[aIBitmap[xSubtile] + iPalette * s_cRgbaPalette];
+					*pB++ = rgba.m_r;
+					*pB++ = rgba.m_g;
+					*pB++ = rgba.m_b;
+				}
+
+				FetchNametableLine(pPpu, 0x2C00, xTile, yTile, ySubtile, aIBitmap, &iPalette);
+				pB = pTex->m_pB + dB + dBNametableX + dBNametableY;
+				for (int xSubtile = 0; xSubtile < s_dXSubtile; ++xSubtile)
+				{
+					RGBA rgba = aRgba[aIBitmap[xSubtile] + iPalette * s_cRgbaPalette];
+					*pB++ = rgba.m_r;
+					*pB++ = rgba.m_g;
+					*pB++ = rgba.m_b;
+				}
 			}
-//			printf("\n");
 		}
 	}
 }

@@ -33,6 +33,7 @@ struct Cpu // tag = cpu
 					,m_p(FCPU_None)
 					,m_sp(0)
 					,m_pc(0)
+					,m_fTriggerNmi(false)
 					,m_cCycleCpu(0)
 						{ ; }
 
@@ -43,6 +44,7 @@ struct Cpu // tag = cpu
 	u8				m_sp;				// stack register
 	u16				m_pc;				// program counter
 
+	bool			m_fTriggerNmi;		// nmi has been triggered, but not handled
 	s64				m_cCycleCpu;		// count of cycles elapsed this frame 		
 										// 1 cpu cycle == 3 Ppu cycle
 };
@@ -210,7 +212,7 @@ struct Famicom // tag = fam
 inline void TickCpu(Famicom * pFam)
 {
 	++pFam->m_cpu.m_cCycleCpu;
-	AdvancePpuTiming(&pFam->m_ptimCpu, pFam->m_cpu.m_cCycleCpu, &pFam->m_memmp);
+	AdvancePpuTiming(pFam, pFam->m_cpu.m_cCycleCpu, &pFam->m_memmp);
 }
 
 inline u8 U8ReadMem(Famicom * pFam, u16 addr)

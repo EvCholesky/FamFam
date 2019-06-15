@@ -42,7 +42,7 @@ struct PpuTiming // tag = ptim
 	s64				m_cCycleCpuPrev;	// count of cycles elapsed since the last ppu update
 };
 
-void AdvancePpuTiming(PpuTiming * pPtim, s64 cCycleCpu, MemoryMap * pMemmp);
+void AdvancePpuTiming(Famicom * pFam, s64 cCycleCpu, MemoryMap * pMemmp);
 
 inline s64 CFrameFromCPclock(s64 cPclock)
 {
@@ -228,8 +228,10 @@ struct Ppu
 
 	OAM				m_aOam[64];	// internal OAM memory - sprite data
 	OAM				m_aOamSecondary[8];		// internal sprite memory inaccessible to the program; used to cache the sprites rendered in the current scanline. 
-	u16				m_addrRegister;			// address used by PPUDATA $2007 and PPUSCROLL $2005
-	bool			m_fSetAddressLSB;		// address register latch 
+	u16				m_addrV;				// address used by PPUDATA $2007 and PPUSCROLL $2005
+	u16				m_addrTemp;				// TempAddress used by PPUSCROLL
+	u8				m_dXScrollFine;
+	bool			m_fIsFirstAddrWrite;	// address register latch 
 };
 
 void InitPpuMemoryMap(Ppu * pPpu, u8 * pBChr, int cBChr, NTMIR ntmir);

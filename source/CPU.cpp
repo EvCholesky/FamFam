@@ -778,11 +778,6 @@ FF_FORCE_INLINE void EvalOpBPL(Famicom * pFam, u16 addr)
 	TryBranch(pFam, (pFam->m_cpu.m_p & FCPU_Negative) == 0, addr);
 }
 
-FF_FORCE_INLINE void EvalOpBRK(Famicom * pFam, u16 addr)
-{
-	FF_ASSERT(false, "TBD"); 
-}
-
 FF_FORCE_INLINE void EvalOpBVC(Famicom * pFam, u16 addr)
 {
 	TryBranch(pFam, (pFam->m_cpu.m_p & FCPU_Overflow) == 0, addr);
@@ -1321,6 +1316,34 @@ FF_FORCE_INLINE void EvalOpSRE(Famicom * pFam, u16 addr)
 FF_FORCE_INLINE void EvalOpTAS(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
 FF_FORCE_INLINE void EvalOpXAA(Famicom * pFam, u16 addr) {FF_ASSERT(false, "Illegal op"); }
 
+FF_FORCE_INLINE void EvalOpBRK(Famicom * pFam, u16 addr)
+{
+	(void)U8ReadMem(pFam, pFam->m_cpu.m_pc++);
+	(void)U8ReadMem(pFam, pFam->m_cpu.m_pc++);
+	PushStack(pFam, u8(pFam->m_cpu.m_pc >> 8));
+	PushStack(pFam, u8(pFam->m_cpu.m_pc & 0xFF));
+
+	PushStack(pFam, pFam->m_cpu.m_p | FCPU_Break);
+	u16 nPcLow = U8ReadMem(pFam, addr);
+	pFam->m_cpu.m_p |= FCPU_InterruptDisable;
+	u16 nPcHigh = U8ReadMem(pFam, addr+1);
+	pFam->m_cpu.m_pc = (nPcHigh << 8) | nPcLow;
+}
+
+FF_FORCE_INLINE void ExecuteInterrupt(Famicom * pFam, u16 addrVector) 
+{
+	(void)U8ReadMem(pFam, pFam->m_cpu.m_pc);
+	(void)U8ReadMem(pFam, pFam->m_cpu.m_pc);
+	PushStack(pFam, u8(pFam->m_cpu.m_pc >> 8));
+	PushStack(pFam, u8(pFam->m_cpu.m_pc & 0xFF));
+
+	PushStack(pFam, pFam->m_cpu.m_p & ~FCPU_Break);
+	u16 nPcLow = U8ReadMem(pFam, addrVector);
+	pFam->m_cpu.m_p |= FCPU_InterruptDisable;
+	u16 nPcHigh = U8ReadMem(pFam, addrVector+1);
+	pFam->m_cpu.m_pc = (nPcHigh << 8) | nPcLow;
+}
+
 void StepCpu(Famicom * pFam)
 {
 	auto pCpu = &pFam->m_cpu;
@@ -1337,6 +1360,12 @@ void StepCpu(Famicom * pFam)
 #undef OPA
 #undef IL
 #undef OP
+
+	if (pFam->m_cpu.m_fTriggerNmi)
+	{
+		ExecuteInterrupt(pFam, kAddrNmi);
+		pFam->m_cpu.m_fTriggerNmi = false;
+	}
 }
 
 inline u8 U8PeekMemNintendulator(MemoryMap * pMemmp, u16 addr)
