@@ -504,7 +504,7 @@ void UpdateNameTableWindow(Debugger * pDebug, Famicom * pFam, Platform * pPlat)
 {
 	auto pNtwin = &pDebug->m_ntwin;
 
-	s64 cFrame = CFrameFromCPclock(pFam->m_cPclockPpu);
+	s64 cFrame = CFrameFromTickp(pFam->m_tickp);
 	if (cFrame % pNtwin->m_cFrameRefresh == 0)
 	{
 		DrawNameTableMemory(&pFam->m_ppu, pNtwin->m_pTex);
@@ -519,6 +519,45 @@ void UpdateNameTableWindow(Debugger * pDebug, Famicom * pFam, Platform * pPlat)
     }
 
 	ImGui::Image((void*)(intptr_t)pNtwin->m_pTex->m_nId, ImVec2(512, 512));
+
+    ImGui::End();
+}
+
+void FillRgb(RGBA rgba, int cRgb, u8 * pB)
+{
+	u8 * pBEnd = &pB[cRgb*3];
+	while (pB != pBEnd)
+	{
+		*pB++ = rgba.m_r;
+		*pB++ = rgba.m_g;
+		*pB++ = rgba.m_b;
+	}
+}
+
+void UpdateScreenWindow(Debugger * pDebug, Platform * pPlat, Famicom * pFam)
+{
+	// just sticking this in a window until I get around to docking external windows
+	auto pPpu = &pFam->m_ppu;
+	UploadTexture(pPlat, pPpu->m_pTexScreen);
+
+	// clear the screen each frame
+
+	static const RGBA s_rgbaClear{0xFF00FFFF};
+	static const RGBA s_rgbaBlack{0xFF000000};
+	u8 * pB = pPpu->m_pTexScreen->m_pB;
+	int cRgbVisible = 256*s_cScanlinesVisible;
+	FillRgb(s_rgbaClear, cRgbVisible, pB);
+	FillRgb(s_rgbaBlack, 256*(256-s_cScanlinesVisible), &pB[cRgbVisible*3]);
+
+	bool fShowWindow = true;
+    ImGui::SetNextWindowSize(ImVec2(512,512), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Screen", &fShowWindow))
+    {
+        ImGui::End();
+        return;
+    }
+
+	ImGui::Image((void*)(intptr_t)pPpu->m_pTexScreen->m_nId, ImVec2(512, 512));
 
     ImGui::End();
 }

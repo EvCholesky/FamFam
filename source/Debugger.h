@@ -48,8 +48,6 @@ struct Debugger // tag = debug
 	Texture *		m_pTexNametable;
 	PpuWindow		m_ppuwin;
 	NameTableWindow	m_ntwin;
-
-
 };
 
 void InitDebugger(Debugger * pDebug, Platform * pPlat);
@@ -59,3 +57,4 @@ void UpdateDisassemblyWindow(Famicom * pFam, bool * pFShowWindow);
 void UpdateRegisterWindow(Famicom * pFam, bool * pFShowWindow);
 void UpdateChrWindow(Debugger * pDebug, Famicom * pFam, Platform * pPlat);
 void UpdateNameTableWindow(Debugger * pDebug, Famicom * pFam, Platform * pPlat);
+void UpdateScreenWindow(Debugger * pDebug, Platform * pPlat, Famicom * pFam);

@@ -41,7 +41,7 @@ void MapMemoryCommon(MemoryMap * pMemmp)
 	auto addrspBottom = AddrspMapMemory(pMemmp, 0x0, 0x800);		// bottom 2K
 	MapMirrored(pMemmp, addrspBottom, 0x800, 0x2000);				// mirrors to 8K
 
-	auto iMemcbWriteOnly = IMemcbAllocate(pMemmp, U8ReadPpuRegWriteOnly, WritePpuReg);
+	auto iMemcbWriteOnly = IMemcbAllocate(pMemmp, U8ReadOpenBus, WritePpuReg);
 	auto iMemcbStatus = IMemcbAllocate(pMemmp, U8ReadPpuStatus, WritePpuReg);
 	auto iMemcbReadWrite = IMemcbAllocate(pMemmp, U8ReadPpuReg, WritePpuReg);
 
@@ -58,7 +58,21 @@ void MapMemoryCommon(MemoryMap * pMemmp)
 	auto addrspPpuReg = AddrspMapMemory(pMemmp, 0x2000, 0x2008, aMemdesc, FF_DIM(aMemdesc));	// PPU registers
 	MapMirrored(pMemmp, addrspPpuReg, 0x2008, 0x4000, aMemdesc, FF_DIM(aMemdesc));				// mirrors to 16k
 
-	auto addrspApuIoReg = AddrspMapMemory(pMemmp, 0x4000, 0x4018);	// APU and IO Registers
+	auto addrspApuIoReg = AddrspMapMemory(pMemmp, 0x4000, 0x4014);	// APU and IO Registers
+
+	auto iMemcbOamDmaReg = IMemcbAllocate(pMemmp, U8ReadOpenBus, WriteOamDmaRegister);
+	auto iMemcbController0 = IMemcbAllocate(pMemmp, U8ReadControllerReg, WriteControllerLatch);
+	auto iMemcbController1 = IMemcbAllocate(pMemmp, U8ReadControllerReg, WriteOpenBus);
+	auto iMemcbOpenBus = IMemcbAllocate(pMemmp, U8ReadOpenBus, WriteOpenBus);
+
+	MemoryDescriptor aMemdescIO[] = {
+		MemoryDescriptor(FMEM_None,		iMemcbOamDmaReg),	//OAMDMA				= 0x4014
+		MemoryDescriptor(FMEM_None,		iMemcbOpenBus),		//SND_CHN(unimplemented)= 0x4015
+		MemoryDescriptor(FMEM_None,		iMemcbController0),	//JOY1					= 0x4016
+		MemoryDescriptor(FMEM_None,		iMemcbController1),	//JOY2			 		= 0x4017
+	};
+
+	(void)AddrspMapMemory(pMemmp, 0x4014, 0x4018, aMemdescIO, FF_DIM(aMemdescIO));
 	(void)AddrspMarkUnmapped(pMemmp, 0x4018, 0x4020);				// unused APU and IO test space
 }
 

@@ -13,14 +13,15 @@ static const int s_cYChrTile = 16;
 static const int s_dXChrHalf = s_cXChrTile * 8;
 static const int s_dYChrHalf = s_cYChrTile * 8;
 
-static const int s_cPclockPerCpuCycle = 3;
-static const int s_cPclockPerScanline = 341;
+static const int s_dTickpPerTickc = 3;
+static const int s_dTickpPerScanline = 341;
 static const int s_cScanlinesPerFrame = 262;
 static const int s_cScanlinesVisible = 240;
-static const int s_cPclockPerFrame = s_cPclockPerScanline * s_cScanlinesPerFrame;
+static const int s_dTickpPerFrame = s_dTickpPerScanline * s_cScanlinesPerFrame;
 
 struct Famicom;
 struct MemoryMap;
+struct Platform;
 struct Texture;
 
 enum NTMIR	// Name Table MIRroring
@@ -34,33 +35,33 @@ enum NTMIR	// Name Table MIRroring
 struct PpuTiming // tag = ptim
 {
 					PpuTiming()
-					:m_cPclock(0)
-					,m_cCycleCpuPrev(0)
+					:m_tickp(0)
+					,m_tickcPrev(0)
 						{ ; }
 
-	u64				m_cPclock;			// ppu clock cycle, not resetting every frame
-	s64				m_cCycleCpuPrev;	// count of cycles elapsed since the last ppu update
+	u64				m_tickp;			// ppu clock cycle, not resetting every frame
+	s64				m_tickcPrev;		// count of cycles at the time of the last ppu update
 };
 
-void AdvancePpuTiming(Famicom * pFam, s64 cCycleCpu, MemoryMap * pMemmp);
+void AdvancePpuTiming(Famicom * pFam, s64 dTickc, MemoryMap * pMemmp);
 
-inline s64 CFrameFromCPclock(s64 cPclock)
+inline s64 CFrameFromTickp(s64 tickp)
 {
-	return cPclock / s_cPclockPerFrame;
+	return tickp / s_dTickpPerFrame;
 }
 
-inline void SplitPclockFrame(s64 cPclock, s64 * pCFrame, s64 * pCPclockSubframe)
+inline void SplitTickpFrame(s64 tickp, s64 * pCFrame, s64 * pTickpSubframe)
 {
-	s64 cFrame = cPclock / s_cPclockPerFrame;
+	s64 cFrame = tickp / s_dTickpPerFrame;
 	*pCFrame = cFrame;
-	*pCPclockSubframe = cPclock - (cFrame * s_cPclockPerFrame);
+	*pTickpSubframe = tickp - (cFrame * s_dTickpPerFrame);
 }
 
-inline void SplitPclockScanline(s64 cPclock, int * pCScanline, int * pCPclockScanline )
+inline void SplitTickpScanline(s64 tickp, int * pCScanline, int * pTickpScanline )
 {
-	s64 cPclockSubframe = cPclock % s_cPclockPerFrame;
-	*pCScanline = int(cPclockSubframe / s_cPclockPerScanline);
-	*pCPclockScanline = int(cPclockSubframe % s_cPclockPerScanline);
+	s64 tickpSubframe = tickp % s_dTickpPerFrame;
+	*pCScanline = int(tickpSubframe / s_dTickpPerScanline);
+	*pTickpScanline = int(tickpSubframe % s_dTickpPerScanline);
 }
 
 
@@ -78,7 +79,7 @@ struct PpuCommand  // tag = ppucmd
 	PCMDK			m_pcmdk;
 	u16				m_addr;
 	u16				m_addrInstDebug;	// address of the instruction that caused this command
-	u64				m_cPclock;	 // BB - could save space if these were stored as dPclock, and we adjusted when we removed the executed spans  
+	u64				m_tickp;			// BB - could save space if these were stored as dTickp, and we adjusted when we removed the executed spans  
 };
 
 struct PpuCommandList // tag = ppucl
@@ -139,7 +140,7 @@ union PpuControl	// tag = pctrl
 		u8	m_dBVramAddressIncrement:1;	// (0==horizontal:add 1, 1==vertical: add 32)
 		u8	m_fHighSpritePatternTable:1;// (0==$0000, 1==$1000; ignored in 8x16 mode)
 		u8	m_fHighBgPaternTable:1;		// (0==$0000, 1==$1000)
-		u8	m_sizeSptrite:1;			// (0==8x8; 1==3x16)
+		u8	m_fUse8x16Sprite:1;			// (0==8x8; 1==8x16)
 		u8	m_fMasterSlaveSelect:1;		// (0==read backdrop from ext pins; 1==output color on ext pins)
 		u8	m_fGenerateVBlankNMI:1;		// generate an NMI at the start of the vertical blanking interval
 	};
@@ -211,6 +212,12 @@ enum PADDR
 	PADDR_VramMax			= 0x4000,
 };
 
+struct TileLine // tag = til // one ySubtile slice
+{
+	u8	m_bLow;
+	u8	m_bHigh;
+	u8	m_iPalette;
+};
 
 struct Ppu
 {
@@ -221,19 +228,31 @@ struct Ppu
 	PpuStatus		m_pstatus;
 
 	u8 				m_aBCieram[kCBCieramMax];			// 4k of physical VRAM, aka CIRAM (ppu actually only has 2k, some carts have an extra 2k
-	u8				m_aBChr[kCBChrMapped];					// 8k current mapped Chr rom
+	u8				m_aBChr[kCBChrMapped];				// 8k current mapped Chr rom
 	u8				m_aBPalette[kCBPalette];
 	u8 *			m_aPVramMap[kCBVramAddressable / s_cBVramGranularity];	// PPU memory mapping is a lot simpler than the CPU
 																			//  memory map, so we'll just use a pointer every 32 bytes
 
-	OAM				m_aOam[64];	// internal OAM memory - sprite data
-	OAM				m_aOamSecondary[8];		// internal sprite memory inaccessible to the program; used to cache the sprites rendered in the current scanline. 
+	OAM				m_aOam[64];				// internal OAM memory - sprite data
+	OAM				m_aOamLine[8];			// internal sprite memory inaccessible to the program; used to cache the sprites rendered in the current scanline. 
+	//u8				m_aBSpriteTile[16];		// cached tile information for the next line's sprites
+	TileLine		m_aTilLine[8];
+	TileLine		m_aTilBackground[32];
+	TileLine		m_aTilBgCache[3];
+	int				m_iLineToggle;
+
 	u16				m_addrV;				// address used by PPUDATA $2007 and PPUSCROLL $2005
 	u16				m_addrTemp;				// TempAddress used by PPUSCROLL
 	u8				m_dXScrollFine;
+	u8				m_bOamAddr;				// least significant byte of the OAM address
 	bool			m_fIsFirstAddrWrite;	// address register latch 
+
+	Texture *		m_pTexScreen;
 };
 
+void StaticInitPpu(Ppu * pPpu, Platform * pPlat);
 void InitPpuMemoryMap(Ppu * pPpu, u8 * pBChr, int cBChr, NTMIR ntmir);
 void DrawChrMemory(Ppu * pPpu, Texture * pTex, bool fUse8x16);
 void DrawNameTableMemory(Ppu * pPpu, Texture * pTex);
+
+void DrawScreenSimple(Ppu * pPpu, u64 tickpMin, u64 tickpMax);

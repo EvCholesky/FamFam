@@ -14,6 +14,15 @@
 
 int main(int cpChzArg, const char * apChzArg[])
 {
+	Platform plat;
+	if (!FTryInitPlatform(&plat))
+		return 0;
+
+	if (!FTryCreateWindow(&plat, 1200, 800, "FamFam"))
+		return 0;
+
+	StaticInitFamicom(&g_fam, &plat);
+
 	Cart cart;
 	g_fam.m_pCart = &cart;
 
@@ -32,12 +41,6 @@ int main(int cpChzArg, const char * apChzArg[])
 
 	}
 
-	Platform plat;
-	if (!FTryInitPlatform(&plat))
-		return 0;
-
-	if (!FTryCreateWindow(&plat, 1200, 800, "FamFam"))
-		return 0;
 
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO();
@@ -70,6 +73,8 @@ int main(int cpChzArg, const char * apChzArg[])
 		ExecuteFamicomFrame(&g_fam);
 
 		UpdateDebugger(&debug, &plat, &g_fam);
+
+		UpdateScreenWindow(&debug, &plat, &g_fam);
 
 		// Render dear imgui into screen
 

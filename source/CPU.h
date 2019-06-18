@@ -8,6 +8,7 @@
 static const int kCBRamPhysical = 2 * 1024; // 0x800
 
 struct Famicom;
+struct Platform;
 struct Ppu;
 struct Cart;
 
@@ -34,7 +35,7 @@ struct Cpu // tag = cpu
 					,m_sp(0)
 					,m_pc(0)
 					,m_fTriggerNmi(false)
-					,m_cCycleCpu(0)
+					,m_tickc(0)
 						{ ; }
 
 	u8				m_a;
@@ -45,7 +46,7 @@ struct Cpu // tag = cpu
 	u16				m_pc;				// program counter
 
 	bool			m_fTriggerNmi;		// nmi has been triggered, but not handled
-	s64				m_cCycleCpu;		// count of cycles elapsed this frame 		
+	s64				m_tickc;			// # of cpu cycles elapsed
 										// 1 cpu cycle == 3 Ppu cycle
 };
 
@@ -171,10 +172,16 @@ void PokeMemU8(MemoryMap * pMemmp, u16 addr, u8 b);
 void WriteMemU8(Famicom * pFam, u16 addr, u8 b);
 void WriteMemU16(Famicom * pFam, u16 addr, u16 n);
 
-u8 U8ReadPpuRegWriteOnly(Famicom * pFam, u16 addr);
+u8 U8ReadOpenBus(Famicom * pFam, u16 addr);
 u8 U8ReadPpuStatus(Famicom * pFam, u16 addr);
 u8 U8ReadPpuReg(Famicom * pFam, u16 addr);
+u8 U8ReadControllerReg(Famicom * pFam, u16 addr);
+
+void WriteOpenBus(Famicom * pFam, u16 addr, u8 b);
 void WritePpuReg(Famicom * pFam, u16 addr, u8 b);
+void WriteOamDmaRegister(Famicom * pFam, u16 addr, u8 b);
+void WriteControllerLatch(Famicom * pFam, u16 addr, u8 b);
+
 
 enum MODELK
 {
@@ -189,7 +196,7 @@ struct Model // tag = model
 struct Famicom // tag = fam
 {
 					Famicom()
-					:m_cPclockPpu(0)
+					:m_tickp(0)
 					,m_pModel(nullptr)
 					,m_pCart(nullptr)
 						{ ; }
@@ -198,7 +205,7 @@ struct Famicom // tag = fam
 	Cpu				m_cpuPrev;
 
 	PpuTiming		m_ptimCpu;		// how far has the cpu simulation processed the ppuClock
-	u64				m_cPclockPpu;	// how far has the ppu simulated
+	u64				m_tickp;		// how far has the ppu simulated
 
 	Ppu				m_ppu;
 	PpuCommandList	m_ppucl;
@@ -211,8 +218,8 @@ struct Famicom // tag = fam
 // advance one cpu clock cycle
 inline void TickCpu(Famicom * pFam)
 {
-	++pFam->m_cpu.m_cCycleCpu;
-	AdvancePpuTiming(pFam, pFam->m_cpu.m_cCycleCpu, &pFam->m_memmp);
+	++pFam->m_cpu.m_tickc;
+	AdvancePpuTiming(pFam, pFam->m_cpu.m_tickc, &pFam->m_memmp);
 }
 
 inline u8 U8ReadMem(Famicom * pFam, u16 addr)
@@ -375,6 +382,7 @@ void SetPowerUpPreLoad(Famicom * pFam, u16 fpow);
 void SetPowerUpState(Famicom * pFam, u16 fpow);
 void SetPpuPowerUpState(Famicom * pFam, u16 fpow);
 
+void StaticInitFamicom(Famicom * pFam, Platform * pPlat);
 void ExecuteFamicomFrame(Famicom * pFam);
 bool FTryAllLogTests();
 

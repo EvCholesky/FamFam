@@ -88,9 +88,15 @@ const OpInfo * POpinfoFromOpcode(u8 nOpcode)
 	return &s_mpOpcodeOpinfo[nOpcode];
 }
 
-u8 U8ReadPpuRegWriteOnly(Famicom * pFam, u16 addr)
+u8 U8ReadOpenBus(Famicom * pFam, u16 addr)
 {
 	return pFam->m_memmp.m_bPrevBusPpu;
+}
+
+void WriteOpenBus(Famicom * pFam, u16 addr, u8 b)
+{
+	auto pMemmp = &pFam->m_memmp;
+	pMemmp->m_bPrevBus = b;
 }
 
 u8 U8ReadPpuStatus(Famicom * pFam, u16 addr)
@@ -136,6 +142,87 @@ void WritePpuReg(Famicom * pFam, u16 addr, u8 b)
 	u8 bDummy;
 	u8 * pB = ((memdesc.m_fmem & FMEM_ReadOnly) == 0) ? pMemmp->m_mpAddrPB[addr] : &bDummy;
 	*pB = b;
+}
+
+u8 U8ReadControllerReg(Famicom * pFam, u16 addr)
+{
+	//TBD
+	return 0;
+}
+
+void DumpOam(Famicom * pFam)
+{
+	OAM * pOamMax = FF_PMAX(pFam->m_ppu.m_aOam);
+	int i = 0;
+	for (OAM * pOam = pFam->m_ppu.m_aOam; pOam != pOamMax; ++pOam, ++i)
+	{
+		if (pOam->m_yTop >= 0xEF)
+			continue;
+
+		printf("%2d: tile=%d:%02X, (%d, %d) pal=%dx pri=%d %s%s\n",
+			i,
+			pOam->m_bank, pOam->m_iTile,
+			pOam->m_xLeft, pOam->m_yTop,
+			pOam->m_palette,
+			pOam->m_fPriority,
+			(pOam->m_fFlipHoriz)? "flipH,":"",
+			(pOam->m_fFlipVert) ? "flipV,":"");
+	}
+}
+
+void ExecuteOamDma(Famicom * pFam, u8 b)
+{
+	TickCpu(pFam);
+
+	// +1 extra cycle if we're on an odd cycle count
+	if (pFam->m_cpu.m_tickc & 0x1)
+	{
+		++pFam->m_cpu.m_tickc;
+	}
+
+	// 256 read/write pairs
+	pFam->m_cpu.m_tickc += 512;
+
+	// Start at the OAM addr and wrap around
+	u8 bOamAddr = pFam->m_ppu.m_bOamAddr;
+	auto pBOam = (u8 *)pFam->m_ppu.m_aOam;
+
+	size_t cBWrap = sizeof(pFam->m_ppu.m_aOam) - bOamAddr;
+	u16 addrStart = u16(b) << 8;
+
+	auto pMemmp = &pFam->m_memmp;
+	u8 * pBSource = pMemmp->m_mpAddrPB[addrStart];
+#if _DEBUG
+	// BB: This will fail if the source span mapped here is not contiguous for 256 bytes.
+	for (int iB = 0; iB < 256; ++iB)
+	{
+		FF_ASSERT(pBSource + iB == pMemmp->m_mpAddrPB[addrStart+iB], "sprite source is not contiguous, I guess we have to do it the slow way");
+	}
+#endif	
+
+	CopyAB(pBSource, &pBOam[bOamAddr], cBWrap);
+
+	if (bOamAddr != 0)
+	{
+		CopyAB(pBSource + cBWrap, pBOam, bOamAddr);
+	}
+
+	//DumpOam(pFam);
+}
+
+void WriteOamDmaRegister(Famicom * pFam, u16 addr, u8 b)
+{
+	UpdatePpu(pFam, pFam->m_ptimCpu);
+	ExecuteOamDma(pFam, b);
+
+	auto pMemmp = &pFam->m_memmp;
+	pMemmp->m_bPrevBusPpu = b;
+}
+
+void WriteControllerLatch(Famicom * pFam, u16 addr, u8 b)
+{
+	auto pMemmp = &pFam->m_memmp;
+	pMemmp->m_bPrevBusPpu = b;
 }
 
 u8 U8PeekMem(MemoryMap * pMemmp, u16 addr)
@@ -326,7 +413,6 @@ void MapMirrored(MemoryMap * pMemmp, AddressSpan addrspBase, u32 addrMin, u32 ad
 		pMemdescIt->m_fmem |= FMEM_Mapped;
 		iMemdesc = (iMemdesc + 1) % cMemdesc;
 	}
-
 	
 	u32 cBBase = max<u32>(1, addrspBase.m_addrMax - addrspBase.m_addrMin);
 	for (u32 addrIt = addrMin; addrIt < addrMax; ++addrIt)
@@ -463,11 +549,11 @@ void SetPowerUpState(Famicom * pFam, u16 fpow)
 	// (1,2)	Fetch two unused instruction bytes, 
 	// (3,4,5)	Push pc(high, low) on the stack, push P on the stack...
 	// (6,7)	Read reset vector into m_pc
-	pCpu->m_cCycleCpu = 7;
+	pCpu->m_tickc = 7;
 	pFam->m_cpuPrev = *pCpu;
 
 	PpuTiming * pPtim = &pFam->m_ptimCpu;
-	pPtim->m_cCycleCpuPrev = pCpu->m_cCycleCpu;
+	pPtim->m_tickcPrev = pCpu->m_tickc;
 
 	SetPpuPowerUpState(pFam, fpow);
 }
@@ -1526,12 +1612,12 @@ int CChPrintCpuState(Famicom * pFam, char * pChz, int cChMax)
 	const Cpu * pCpu = &pFam->m_cpu;
 	const PpuTiming * pPtim = &pFam->m_ptimCpu;
 	int cScanline;
-	int cPclockScanline;
-	SplitPclockScanline(pFam->m_ptimCpu.m_cPclock, &cScanline, &cPclockScanline);
+	int tickpScanline;
+	SplitTickpScanline(pFam->m_ptimCpu.m_tickp, &cScanline, &tickpScanline);
 
 	u8 p = pCpu->m_p | FCPU_Unused;
 	int iCh = sprintf_s(pChz, cChMax, "A:%02X X:%02X Y:%02X P:%02X SP:%02X PPU:%3i,%3i CYC:%I64d", 
-		pCpu->m_a, pCpu->m_x, pCpu->m_y, p, pCpu->m_sp, cPclockScanline, cScanline, pCpu->m_cCycleCpu);
+		pCpu->m_a, pCpu->m_x, pCpu->m_y, p, pCpu->m_sp, tickpScanline, cScanline, pCpu->m_tickc);
 	return iCh;
 }
 
@@ -1746,7 +1832,7 @@ bool FTryRunLogTest(const char * pChzFilenameRom, const char * pChzFilenameLog, 
 	char aChLog[128];
 	int cLineLog = 0;
 	int cStep = 0;
-	auto cFramePrev = CFrameFromCPclock(fam.m_ptimCpu.m_cPclock);
+	auto cFramePrev = CFrameFromTickp(fam.m_ptimCpu.m_tickp);
 	while (pBLogIt != pBLogMax)
 	{
 		LogLine * pLline = PLlineAppend(&lhist);
@@ -1769,7 +1855,7 @@ bool FTryRunLogTest(const char * pChzFilenameRom, const char * pChzFilenameLog, 
 
 		StepCpu(&fam);
 
-		auto cFrameNew = CFrameFromCPclock(fam.m_ptimCpu.m_cPclock);
+		auto cFrameNew = CFrameFromTickp(fam.m_ptimCpu.m_tickp);
 		if (cFrameNew != cFramePrev)
 		{
 			// update the ppu command list to avoid overflowing
@@ -1777,7 +1863,7 @@ bool FTryRunLogTest(const char * pChzFilenameRom, const char * pChzFilenameLog, 
 		}
 	}
 
-	printf("Test '%s' success at cycle %lld\n", pChzFilenameLog, fam.m_cpu.m_cCycleCpu);
+	printf("Test '%s' success at cycle %lld\n", pChzFilenameLog, fam.m_cpu.m_tickc);
 	return fPassTest;
 }
 
@@ -1814,16 +1900,27 @@ bool FTryAllLogTests()
 	return true;
 }
 
+void StaticInitFamicom(Famicom * pFam, Platform * pPlat)
+{
+	StaticInitPpu(&pFam->m_ppu, pPlat);
+}
+
 void ExecuteFamicomFrame(Famicom * pFam)
 {
 	// run the CPU from cycle 0 until the last cycle of the last pixel of scanline 261
 
-	s64 cFramePrev = CFrameFromCPclock(pFam->m_ptimCpu.m_cPclock);
-	while (cFramePrev == CFrameFromCPclock(pFam->m_ptimCpu.m_cPclock))
+	s64 cFramePrev = CFrameFromTickp(pFam->m_ptimCpu.m_tickp);
+	while (cFramePrev == CFrameFromTickp(pFam->m_ptimCpu.m_tickp))
 	{
 		StepCpu(pFam);
 	}
 
-	UpdatePpu(pFam, pFam->m_ptimCpu);
+	s64 cFrame;
+	s64 tickpSubframe;
+	SplitTickpFrame(pFam->m_ptimCpu.m_tickp, &cFrame, &tickpSubframe);
+
+	PpuTiming ptimFrameEnd = pFam->m_ptimCpu;
+	ptimFrameEnd.m_tickp -= tickpSubframe;
+	UpdatePpu(pFam, ptimFrameEnd);
 }
 
