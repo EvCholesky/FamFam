@@ -159,9 +159,9 @@ void DumpOam(Famicom * pFam)
 		if (pOam->m_yTop >= 0xEF)
 			continue;
 
-		printf("%2d: tile=%d:%02X, (%d, %d) pal=%dx pri=%d %s%s\n",
+		printf("%2d: tile=%02X, (%d, %d) pal=%dx pri=%d %s%s\n",
 			i,
-			pOam->m_bank, pOam->m_iTile,
+			pOam->m_iTile,
 			pOam->m_xLeft, pOam->m_yTop,
 			pOam->m_palette,
 			pOam->m_fPriority,
@@ -1907,6 +1907,8 @@ void StaticInitFamicom(Famicom * pFam, Platform * pPlat)
 
 void ExecuteFamicomFrame(Famicom * pFam)
 {
+	if (!pFam->m_fIsRomLoaded)
+		return;
 	// run the CPU from cycle 0 until the last cycle of the last pixel of scanline 261
 
 	s64 cFramePrev = CFrameFromTickp(pFam->m_ptimCpu.m_tickp);

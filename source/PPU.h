@@ -183,8 +183,7 @@ union OAM	// Object Attribute Memory, aka sprite data
 		u8	m_yTop;			// Y-position in scanlines of the top of the sprite. Delayed by one scanline - you must subtract 1 before writing it here
 							// Hide a sprite by writing any values in $EF..$FF here. Sprites are never displayed on the first line of the picture, and it is impossible to place a sprite partially off the top of the screen.
 
-		u8	m_bank:1;		// bank of tiles ($0000 or $1000)
-		u8	m_iTile:7;		// tile index for top of sprite, bottom half gets the next sprite
+		u8	m_iTile;		// tile index for top of sprite, bottom half gets the next sprite
 
 		u8	m_palette:2;	// palette (4..7) of sprite
 		u8  m_pad:3;		// should always read back as zero

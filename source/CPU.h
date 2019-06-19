@@ -197,6 +197,7 @@ struct Famicom // tag = fam
 {
 					Famicom()
 					:m_tickp(0)
+					,m_fIsRomLoaded(false)
 					,m_pModel(nullptr)
 					,m_pCart(nullptr)
 						{ ; }
@@ -206,6 +207,7 @@ struct Famicom // tag = fam
 
 	PpuTiming		m_ptimCpu;		// how far has the cpu simulation processed the ppuClock
 	u64				m_tickp;		// how far has the ppu simulated
+	bool			m_fIsRomLoaded;
 
 	Ppu				m_ppu;
 	PpuCommandList	m_ppucl;

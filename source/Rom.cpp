@@ -269,6 +269,7 @@ bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart, Famicom * pFam, FPOW fpow)
 
 	SetPowerUpState(pFam, fpow);
 	printf("RomLoaded: PRG %d KiB,  CHR %d KiB\n", pCart->m_cBPrgRom / 1024, pCart->m_cBChrRom / 1024);
+	pFam->m_fIsRomLoaded = true;
 	return true;
 }
 
