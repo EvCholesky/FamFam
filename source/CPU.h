@@ -8,6 +8,8 @@
 static const int kCBRamPhysical = 2 * 1024; // 0x800
 
 struct Famicom;
+struct FamicomInput;
+struct KeyPressState;
 struct Platform;
 struct Ppu;
 struct Cart;
@@ -189,8 +191,44 @@ enum MODELK
 	MODELK_PAL
 };
 
-struct Model // tag = model
+enum BUTK : s8// BUTton Kind
 {
+	BUTK_A,
+	BUTK_B,
+	BUTK_Select,
+	BUTK_Start,
+	BUTK_Up,
+	BUTK_Down,
+	BUTK_Left,
+	BUTK_Right,
+	BUTK_StandardMax, // # of buttons on the standard controller 
+
+	BUTK_X = BUTK_StandardMax,
+	BUTK_Y,	
+	BUTK_L1,	
+	BUTK_R1,	
+
+	BUTK_Max,
+	BUTK_Min = 0,
+	BUTK_Nil = -1
+};
+
+struct Gamepad // tag = gpad
+{
+	EDGES				m_mpButkEdges[BUTK_Max];
+	s16	 				m_mpButkKeycode[BUTK_Max];
+
+	bool				m_fIsConnected;
+	u8					m_iBShift;	
+};
+
+static const int s_cGamepadMax = 4;		// with NES "four score"
+struct FamicomInput		// tag = famin
+{
+					FamicomInput();
+
+	u8				m_nControllerLatch;	// set by writing to 0x4016, saves Gampad input going high->low
+	Gamepad			m_aGpad[s_cGamepadMax];	
 };
 
 struct Famicom // tag = fam
@@ -198,7 +236,8 @@ struct Famicom // tag = fam
 					Famicom()
 					:m_tickp(0)
 					,m_fIsRomLoaded(false)
-					,m_pModel(nullptr)
+					,m_pKeyps(nullptr)
+					,m_famin()
 					,m_pCart(nullptr)
 						{ ; }
 
@@ -212,7 +251,8 @@ struct Famicom // tag = fam
 	Ppu				m_ppu;
 	PpuCommandList	m_ppucl;
 
-	Model *			m_pModel;
+	KeyPressState * m_pKeyps;
+	FamicomInput 	m_famin;
 	Cart *			m_pCart;
 	MemoryMap 		m_memmp;
 };

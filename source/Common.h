@@ -22,6 +22,14 @@ typedef ptrdiff_t sSize;
 template <typename T> T min(T a, T b)						{ return a < b ? a : b; }
 template <typename T> T max(T a, T b)						{ return a > b ? a : b; }
 
+enum EDGES : u8	// EDGE State
+{
+	EDGES_Off,
+	EDGES_Release,
+	EDGES_Hold,
+	EDGES_Press	
+};
+
 // simple buffer
 struct Buffer // tag = buf
 {

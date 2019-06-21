@@ -21,10 +21,10 @@ int main(int cpChzArg, const char * apChzArg[])
 	if (!FTryCreateWindow(&plat, 1200, 800, "FamFam"))
 		return 0;
 
-	StaticInitFamicom(&g_fam, &plat);
-
 	Cart cart;
 	g_fam.m_pCart = &cart;
+
+	StaticInitFamicom(&g_fam, &plat);
 
 	if (cpChzArg > 1)
 	{
@@ -82,7 +82,7 @@ int main(int cpChzArg, const char * apChzArg[])
         ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
 
 		SwapBuffers(&plat);
-		PollInput(&plat);
+		PollInput(&plat, &g_fam);
 	}
 
 	// Shutdown

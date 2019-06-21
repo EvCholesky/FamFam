@@ -146,8 +146,13 @@ void WritePpuReg(Famicom * pFam, u16 addr, u8 b)
 
 u8 U8ReadControllerReg(Famicom * pFam, u16 addr)
 {
-	//TBD
-	return 0;
+	int iGpad  = (addr == 0x4017) ? 1 : 0;
+	Gamepad * pGpad = &pFam->m_famin.m_aGpad[iGpad];
+
+	EDGES edges = pGpad->m_mpButkEdges[pGpad->m_iBShift++];
+
+	u8 b = (edges >= EDGES_Press) ? 1 : 0;
+	return b;
 }
 
 void DumpOam(Famicom * pFam)
@@ -221,6 +226,28 @@ void WriteOamDmaRegister(Famicom * pFam, u16 addr, u8 b)
 
 void WriteControllerLatch(Famicom * pFam, u16 addr, u8 b)
 {
+	FamicomInput * pFamin = &pFam->m_famin;
+	u8 nLatchPrev = pFamin->m_nControllerLatch;
+	pFamin->m_nControllerLatch = b & 0x7;
+
+	if ((nLatchPrev & 0x1) == 0 && (pFamin->m_nControllerLatch & 0x1) != 0)
+	{
+		KeyPressState * pKeyps = pFam->m_pKeyps;
+
+		int iGpad = 0;
+		auto pGpadMax = FF_PMAX(pFamin->m_aGpad);
+		for (Gamepad * pGpad = pFamin->m_aGpad; pGpad != pGpadMax; ++pGpad, ++iGpad)
+		{
+			pGpad->m_iBShift = 0;
+
+			for (int butk = BUTK_Min; butk < BUTK_Max; ++butk)
+			{
+				KEYCODE keycode = KEYCODE(pGpad->m_mpButkKeycode[butk]);
+				pGpad->m_mpButkEdges[butk] = pKeyps->m_mpKeycodeEdges[keycode];
+			}
+		}
+	}
+
 	auto pMemmp = &pFam->m_memmp;
 	pMemmp->m_bPrevBusPpu = b;
 }
@@ -1903,6 +1930,8 @@ bool FTryAllLogTests()
 void StaticInitFamicom(Famicom * pFam, Platform * pPlat)
 {
 	StaticInitPpu(&pFam->m_ppu, pPlat);
+
+	SetupDefaultInputMapping(pFam);
 }
 
 void ExecuteFamicomFrame(Famicom * pFam)
