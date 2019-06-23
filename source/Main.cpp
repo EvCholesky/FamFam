@@ -10,12 +10,14 @@
 
 #include <stdio.h>
 
-
+s64 g_cTickPerSecond = 1;
 
 int main(int cpChzArg, const char * apChzArg[])
 {
+	static const int s_nHzTarget = 60;
+
 	Platform plat;
-	if (!FTryInitPlatform(&plat))
+	if (!FTryInitPlatform(&plat, s_nHzTarget))
 		return 0;
 
 	if (!FTryCreateWindow(&plat, 1200, 800, "FamFam"))
@@ -55,6 +57,8 @@ int main(int cpChzArg, const char * apChzArg[])
 	Debugger debug;
 	InitDebugger(&debug, &plat);
 
+	auto cTickLast = CTickWallClock();
+
 	bool fShowImguiDemoWindow = true;
 	while (!FShouldWindowClose(&plat))
 	{
@@ -83,6 +87,9 @@ int main(int cpChzArg, const char * apChzArg[])
 
 		SwapBuffers(&plat);
 		PollInput(&plat, &g_fam);
+
+		WaitUntilFrameEnd(&plat.m_pltime, cTickLast);
+		cTickLast = CTickWallClock();
 	}
 
 	// Shutdown

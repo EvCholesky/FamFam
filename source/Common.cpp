@@ -20,7 +20,7 @@ void ResizeBuffer(Buffer * pBuf, int cB)
 		pBuf->m_pB = (u8 *)malloc(cB);
 	}
 
-	int cBCopy = min(cBPrev, cB);
+	int cBCopy = ffMin(cBPrev, cB);
 	if (cBCopy)
 	{
 		memcpy(pBuf->m_pB, pBPrev, cBCopy);

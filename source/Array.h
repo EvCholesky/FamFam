@@ -429,7 +429,7 @@ public:
 						size_t c = cSize;
 						if (c > m_cMax) 
 						{
-							size_t cNew = max(m_cMax * 2, c); 
+							size_t cNew = ffMax(m_cMax * 2, c); 
 							Resize(cNew);
 						}
 					}

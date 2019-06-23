@@ -19,8 +19,8 @@ typedef double f64;
 typedef size_t uSize;
 typedef ptrdiff_t sSize;
 
-template <typename T> T min(T a, T b)						{ return a < b ? a : b; }
-template <typename T> T max(T a, T b)						{ return a > b ? a : b; }
+template <typename T> T ffMin(T a, T b)						{ return a < b ? a : b; }
+template <typename T> T ffMax(T a, T b)						{ return a > b ? a : b; }
 
 enum EDGES : u8	// EDGE State
 {

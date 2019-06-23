@@ -1,10 +1,73 @@
+#include <windows.h>
+#include <mmsystem.h>
+
 #include "Cpu.h"
 #include "imgui.h"
 #include "Platform.h"
 #include "glfw/include/GLFW/glfw3.h"
 #include "glfw/deps/GL/glext.h"
 
+
 KeyPressState g_keyps;
+
+s64 CTickPerSecond()
+{
+
+    LARGE_INTEGER lrgintFrequency;
+    QueryPerformanceFrequency(&lrgintFrequency);
+    return lrgintFrequency.QuadPart;
+}
+
+s64 CTickWallClock()
+{
+    LARGE_INTEGER lrgint;
+    QueryPerformanceCounter(&lrgint);
+    return lrgint.QuadPart;
+}
+
+bool FTrySetTimerResolution(u32 msResolution)
+{
+    return timeBeginPeriod(msResolution) == TIMERR_NOERROR;
+}
+
+void InitPlatformTime(PlatformTime * pPltime, int nHzTarget)
+{
+    pPltime->m_dTFrameTarget = 1.0f / nHzTarget;
+
+	static const int s_msResolutionDesired = 1;
+    pPltime->m_fHasMsSleep = FTrySetTimerResolution(s_msResolutionDesired);
+
+    pPltime->m_cTickPerSecond = CTickPerSecond();
+	pPltime->m_rTickToSecond = 1.0f / f32(pPltime->m_cTickPerSecond);
+}
+
+FF_FORCE_INLINE f32 DTElapsed(s64 cTickStart, s64 cTickEnd, float rTickToSecond)
+{
+    return f32(cTickEnd - cTickStart) * rTickToSecond;
+}
+
+void WaitUntilFrameEnd(PlatformTime * pPltime, s64 cTickStart)
+{
+	auto cTickEnd = CTickWallClock();
+	f32 dTElapsed = DTElapsed(cTickStart, cTickEnd, pPltime->m_rTickToSecond);
+
+	if (dTElapsed < pPltime->m_dTFrameTarget)
+	{                        
+		if (pPltime->m_fHasMsSleep)
+		{
+			u32 SleepMS = u32(1000.0 * (pPltime->m_dTFrameTarget - dTElapsed));
+			if (SleepMS > 0)
+			{
+				Sleep(SleepMS);
+			}
+		}
+
+		while (dTElapsed < pPltime->m_dTFrameTarget)
+		{                            
+			dTElapsed = DTElapsed(cTickStart, CTickWallClock(), pPltime->m_rTickToSecond);
+		}
+	}
+}
 
 KEYCODE KeycodeFromGlfwKey(int nKey)
 {
@@ -178,10 +241,12 @@ void SetupDefaultInputMapping(Famicom * pFam)
 	pGpad0->m_mpButkKeycode[BUTK_Right] = KEYCODE_ArrowRight;
 }
 
-bool FTryInitPlatform(Platform * pPlat)
+bool FTryInitPlatform(Platform * pPlat, int nHzTarget)
 {
 	if (!glfwInit())
 		return false;
+
+	InitPlatformTime(&pPlat->m_pltime, nHzTarget);
 	return true;
 }
 

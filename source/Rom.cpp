@@ -114,7 +114,7 @@ bool FTrySetupMapperNrom(Famicom * pFam, Cart* pCart)
 
 	//TestMemoryMap(pMemmp);
 
-	int cBChr = min<int>(FF_DIM(pFam->m_ppu.m_aBChr), pCart->m_cBChrRom);
+	int cBChr = ffMin<int>(FF_DIM(pFam->m_ppu.m_aBChr), pCart->m_cBChrRom);
 	NTMIR ntmir = (pCart->m_pHead->m_romf.m_fMirrorVert) ? NTMIR_Vertical : NTMIR_Horizontal;
 	InitPpuMemoryMap(&pFam->m_ppu, pFam->m_ppu.m_aBChr, cBChr, ntmir);
 	return true;
@@ -147,7 +147,7 @@ bool FTrySetupMapperMmc1(Famicom * pFam, Cart* pCart)
 	auto addrspPrg1 = AddrspMapMemory(pMemmp, 0x6000, FF_KIB(8), &memdescReadOnly);
 	TestMemoryMap(pMemmp);
 
-	int cBChr = min<int>(FF_DIM(pFam->m_ppu.m_aBChr), pCart->m_cBChrRom);
+	int cBChr = ffMin<int>(FF_DIM(pFam->m_ppu.m_aBChr), pCart->m_cBChrRom);
 	NTMIR ntmir = (pCart->m_pHead->m_romf.m_fMirrorVert) ? NTMIR_Vertical : NTMIR_Horizontal;
 	InitPpuMemoryMap(&pFam->m_ppu, pFam->m_ppu.m_aBChr, cBChr, ntmir);
 	return true;
@@ -259,7 +259,7 @@ bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart, Famicom * pFam, FPOW fpow)
 	pCart->m_pBChrRom = pCart->m_pBPrgRom + pCart->m_cBPrgRom;
 
 	auto pPpu = &pFam->m_ppu;
-	int cBChr = min<int>(FF_DIM(pPpu->m_aBChr), pCart->m_cBChrRom);
+	int cBChr = ffMin<int>(FF_DIM(pPpu->m_aBChr), pCart->m_cBChrRom);
 	CopyAB(pCart->m_pBChrRom, pPpu->m_aBChr, cBChr);
 
 	if (!FTrySetupMemoryMapper(pFam, pCart))

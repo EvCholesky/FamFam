@@ -121,6 +121,23 @@ struct KeyPressState // tag = keys
 	EDGES				m_mpKeycodeEdges[KEYCODE_Max];
 };
 
+struct PlatformTime // tag = pltime
+{
+				PlatformTime()
+				:m_nHzDesired(60)
+				,m_dTFrameTarget(1.0f/60.0f)
+				,m_rTickToSecond(0.001f)
+				,m_cTickPerSecond(1000)
+				,m_fHasMsSleep(false)
+					{ ; }
+
+	s32			m_nHzDesired;
+	f32			m_dTFrameTarget;	
+	f32			m_rTickToSecond;		// 1.0f / cTickPerSecond;
+	s64			m_cTickPerSecond;
+	bool		m_fHasMsSleep;
+};
+
 struct Platform // tag = plat
 {
 						Platform()
@@ -128,11 +145,19 @@ struct Platform // tag = plat
 							{ ; }
 	
 	GLFWwindow *		m_pGlfwin;
+	PlatformTime		m_pltime;
 };
 
-bool FTryInitPlatform(Platform * pPlat);
+bool FTryInitPlatform(Platform * pPlat, int nHzTarget);
 void SetupDefaultInputMapping(Famicom * pFam);
 void ShutdownPlatform(Platform * pPlat);
+
+void InitPlatformTime(PlatformTime * pPltime, int nHzTarget);
+void WaitUntilFrameEnd(PlatformTime * pPltime, s64 cTickStart);
+
+bool FTrySetTimerResolution(u32 msResolution);
+s64 CTickPerSecond();
+s64 CTickWallClock();
 
 bool FTryCreateWindow(Platform * pPlat, int dX, int dY, const char* pChzTitle);
 bool FShouldWindowClose(Platform * pPlat); 

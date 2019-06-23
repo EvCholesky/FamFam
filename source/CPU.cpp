@@ -297,7 +297,7 @@ void VerifyMemorySpanClear(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
 {
 	// make sure this span is not overlapping any other spans
 
-	addrMax = min<u32>(addrMax, kCBAddressable);
+	addrMax = ffMin<u32>(addrMax, kCBAddressable);
 	for (u32 addrIt = addrMin; addrIt < addrMax; ++addrIt)
 	{
 		FF_ASSERT(pMemmp->m_mpAddrPB[addrIt] == nullptr);
@@ -441,7 +441,7 @@ void MapMirrored(MemoryMap * pMemmp, AddressSpan addrspBase, u32 addrMin, u32 ad
 		iMemdesc = (iMemdesc + 1) % cMemdesc;
 	}
 	
-	u32 cBBase = max<u32>(1, addrspBase.m_addrMax - addrspBase.m_addrMin);
+	u32 cBBase = ffMax<u32>(1, addrspBase.m_addrMax - addrspBase.m_addrMin);
 	for (u32 addrIt = addrMin; addrIt < addrMax; ++addrIt)
 	{
 		u32 dAddr = (addrIt - addrMin) % cBBase;
@@ -1519,7 +1519,7 @@ int CChPrintDisassmLine(const Cpu * pCpu, MemoryMap * pMemmp, u16 addr, char * p
 	}
 
 	pChz = pChz + cChWritten;
-	cChMax = max(0, cChMax - cChWritten);
+	cChMax = ffMax(0, cChMax - cChWritten);
 
 	if (cChMax == 0)
 		return cChWritten;
@@ -1529,7 +1529,7 @@ int CChPrintDisassmLine(const Cpu * pCpu, MemoryMap * pMemmp, u16 addr, char * p
 
 	cChWritten += cChOp;
 	pChz = pChz + cChOp;
-	cChMax = max(0, cChMax - cChOp);
+	cChMax = ffMax(0, cChMax - cChOp);
 
 	if (cChMax == 0)
 		return cChWritten;
@@ -1653,7 +1653,7 @@ int CChPadText(char * pChz, int cChMax, char chPad, int cChPad)
 	if (cChMax <= 0)
 		return 0;
 
-	int cCh = min(cChMax - 1, cChPad);
+	int cCh = ffMin(cChMax - 1, cChPad);
 	auto pChzMax = &pChz[cCh];
 	auto pChzIt = pChz;
 	for ( ; pChzIt != pChzMax; ++pChzIt)
@@ -1673,12 +1673,12 @@ void PrintCpuStateForLog(Famicom * pFam, char * pChz, int cChMax)
 		return;
 	int cChAsm = CChPrintDisassmLine(&pFam->m_cpu, &pFam->m_memmp, pFam->m_cpu.m_pc, pChz, cChMax);
 	pChz += cChAsm;
-	cChMax = max(0, cChMax - cChAsm);
+	cChMax = ffMax(0, cChMax - cChAsm);
 
 	// pad to colunn 49
 	int cChPad =  CChPadText(pChz, cChMax, ' ', 48 - cChAsm);
 	pChz += cChPad;
-	cChMax = max(0, cChMax - cChPad);
+	cChMax = ffMax(0, cChMax - cChPad);
 
 	if (cChMax < 0)
 		return;
