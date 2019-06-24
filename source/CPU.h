@@ -216,7 +216,8 @@ enum BUTK : s8// BUTton Kind
 struct Gamepad // tag = gpad
 {
 	EDGES				m_mpButkEdges[BUTK_Max];
-	s16	 				m_mpButkKeycode[BUTK_Max];
+	s16	 				m_mpButkKeycode0[BUTK_Max];
+	s16	 				m_mpButkKeycode1[BUTK_Max];
 
 	bool				m_fIsConnected;
 	u8					m_iBShift;	

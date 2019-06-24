@@ -16,17 +16,16 @@ int main(int cpChzArg, const char * apChzArg[])
 {
 	static const int s_nHzTarget = 60;
 
-	Platform plat;
-	if (!FTryInitPlatform(&plat, s_nHzTarget))
+	if (!FTryInitPlatform(&g_plat, s_nHzTarget))
 		return 0;
 
-	if (!FTryCreateWindow(&plat, 1200, 800, "FamFam"))
+	if (!FTryCreateWindow(&g_plat, 1200, 800, "FamFam"))
 		return 0;
 
 	Cart cart;
 	g_fam.m_pCart = &cart;
 
-	StaticInitFamicom(&g_fam, &plat);
+	StaticInitFamicom(&g_fam, &g_plat);
 
 	if (cpChzArg > 1)
 	{
@@ -48,21 +47,21 @@ int main(int cpChzArg, const char * apChzArg[])
 	ImGuiIO& io = ImGui::GetIO();
 	
 	// Initialize helper Platform and Renderer bindings (here we are using imgui_impl_win32 and imgui_impl_dx11)
-	ImGui_ImplGlfw_InitForOpenGL(plat.m_pGlfwin, false);
+	ImGui_ImplGlfw_InitForOpenGL(g_plat.m_pGlfwin, false);
     ImGui_ImplOpenGL2_Init();
 
 //	if (!FTryAllLogTests())
 //		return 0;
 
 	Debugger debug;
-	InitDebugger(&debug, &plat);
+	InitDebugger(&debug, &g_plat);
 
 	auto cTickLast = CTickWallClock();
 
 	bool fShowImguiDemoWindow = true;
-	while (!FShouldWindowClose(&plat))
+	while (!FShouldWindowClose(&g_plat))
 	{
-		ClearScreen(&plat);
+		ClearScreen(&g_plat);
 
          // Feed inputs to dear imgui, start new frame
         ImGui_ImplOpenGL2_NewFrame();
@@ -76,19 +75,19 @@ int main(int cpChzArg, const char * apChzArg[])
 
 		ExecuteFamicomFrame(&g_fam);
 
-		UpdateDebugger(&debug, &plat, &g_fam);
+		UpdateDebugger(&debug, &g_plat, &g_fam);
 
-		UpdateScreenWindow(&debug, &plat, &g_fam);
+		UpdateScreenWindow(&debug, &g_plat, &g_fam);
 
 		// Render dear imgui into screen
 
 		ImGui::Render();
         ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
 
-		SwapBuffers(&plat);
-		PollInput(&plat, &g_fam);
+		SwapBuffers(&g_plat);
+		PollInput(&g_plat, &g_fam);
 
-		WaitUntilFrameEnd(&plat.m_pltime, cTickLast);
+		WaitUntilFrameEnd(&g_plat.m_pltime, cTickLast);
 		cTickLast = CTickWallClock();
 	}
 
@@ -96,6 +95,6 @@ int main(int cpChzArg, const char * apChzArg[])
     ImGui_ImplOpenGL2_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
 	ImGui::DestroyContext();
-	ShutdownPlatform(&plat);
+	ShutdownPlatform(&g_plat);
 	return 1;
 }

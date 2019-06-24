@@ -242,8 +242,11 @@ void WriteControllerLatch(Famicom * pFam, u16 addr, u8 b)
 
 			for (int butk = BUTK_Min; butk < BUTK_Max; ++butk)
 			{
-				KEYCODE keycode = KEYCODE(pGpad->m_mpButkKeycode[butk]);
-				pGpad->m_mpButkEdges[butk] = pKeyps->m_mpKeycodeEdges[keycode];
+				KEYCODE keycode0 = KEYCODE(pGpad->m_mpButkKeycode0[butk]);
+				KEYCODE keycode1 = KEYCODE(pGpad->m_mpButkKeycode1[butk]);
+				EDGES edges0 = pKeyps->m_mpKeycodeEdges[keycode0];
+				EDGES edges1 = pKeyps->m_mpKeycodeEdges[keycode1];
+				pGpad->m_mpButkEdges[butk] = ffMax(edges0, edges1);
 			}
 		}
 	}

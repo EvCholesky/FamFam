@@ -203,7 +203,7 @@ void AdvancePpuTiming(Famicom * pFam, s64 tickc, MemoryMap * pMemmp)
 
 	static const int s_tickpVBlankSet = 241 * s_dTickpPerScanline + 1; // vblank happens on the first cycle of the 241st scanline of a frame.
 	static const int s_tickpStatusClear = 261 * s_dTickpPerScanline + 1; // vblank is cleared  on the first cycle of the prerender scanline.
-	if (fIsRenderEnabled && fIsOddFrame && cFramePrev != cFrame)
+	if (fIsRenderEnabled & fIsOddFrame & (cFramePrev != cFrame))
 	{
 		// Odd frames (with rendering enabled) are one cycle shorter - this cycle is dropped from the
 		//  first idle cycle of the  first scanline
@@ -213,7 +213,7 @@ void AdvancePpuTiming(Famicom * pFam, s64 tickc, MemoryMap * pMemmp)
 		++tickpSubframe;
 	}
 
-	if (s_tickpVBlankSet > tickpSubframePrev && s_tickpVBlankSet <= tickpSubframe)
+	if ((s_tickpVBlankSet > tickpSubframePrev) & (s_tickpVBlankSet <= tickpSubframe))
 	{
 		// this doesn't handle toggling nmi_output while vblank is set
 		bool fNmiOutput = pMemmp->m_aBRaw[PPUREG_Ctrl] & 0x80;
@@ -223,7 +223,7 @@ void AdvancePpuTiming(Famicom * pFam, s64 tickc, MemoryMap * pMemmp)
 		}
 		pMemmp->m_aBRaw[PPUREG_Status] |= 0x80;
 	}
-	else if (s_tickpStatusClear > tickpSubframePrev && s_tickpStatusClear <= tickpSubframe)
+	else if ((s_tickpStatusClear > tickpSubframePrev) & (s_tickpStatusClear <= tickpSubframe))
 	{
 		pMemmp->m_aBRaw[PPUREG_Status] = 0;
 	}

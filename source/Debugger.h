@@ -9,7 +9,7 @@ struct Texture;
 struct PpuWindow // tag = ppuwin
 {
 					PpuWindow()
-					:m_fShowWindow(true)
+					:m_fShowWindow(false)
 					,m_fChrNeedsRefresh(true)
 					,m_fUse8x16Mode(false)
 					,m_pTexChr(nullptr)
@@ -25,7 +25,7 @@ struct PpuWindow // tag = ppuwin
 struct NameTableWindow // tag = ntwin
 {
 					NameTableWindow()
-					:m_fShowWindow(true)
+					:m_fShowWindow(false)
 					,m_cFrameRefresh(2)
 					,m_pTex(nullptr)
 						{ ; }

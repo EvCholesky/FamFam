@@ -88,26 +88,45 @@ enum KEYCODE : s16
 	KEYCODE_RightBracket = 76,
 	KEYCODE_GraveAccent = 77,
 
-	KEYCODE_JoypadButton1 = 80,
-	KEYCODE_JoypadButton2 = 81,
-	KEYCODE_JoypadButton3 = 82,
-	KEYCODE_JoypadButton4 = 83,
-	KEYCODE_JoypadButton5 = 84,
-	KEYCODE_JoypadButton6 = 85,
-	KEYCODE_JoypadButton7 = 86,
-	KEYCODE_JoypadButton8 = 87,
-	KEYCODE_JoypadButton9 = 88,
-	KEYCODE_JoypadButton10 = 89,
-	KEYCODE_JoypadButton11 = 90,
-	KEYCODE_JoypadButton12 = 91,
-	KEYCODE_JoypadButton13 = 92,
-	KEYCODE_JoypadButton14 = 93,
-	KEYCODE_JoypadButton15 = 94,
-	KEYCODE_JoypadButton16 = 95,
-	KEYCODE_JoypadButton17 = 96,
-	KEYCODE_JoypadButton18 = 97,
-	KEYCODE_JoypadButton19 = 98,
-	KEYCODE_JoypadButton20 = 99,
+	KEYCODE_JoypadButtonMin = 80, 
+	KEYCODE_JoypadButton0 = KEYCODE_JoypadButtonMin,
+	KEYCODE_JoypadButton1 = 81,
+	KEYCODE_JoypadButton2 = 82,
+	KEYCODE_JoypadButton3 = 83,
+	KEYCODE_JoypadButton4 = 84,
+	KEYCODE_JoypadButton5 = 85,
+	KEYCODE_JoypadButton6 = 86,
+	KEYCODE_JoypadButton7 = 87,
+	KEYCODE_JoypadButton8 = 88,
+	KEYCODE_JoypadButton9 = 89,
+	KEYCODE_JoypadButton10 = 90,
+	KEYCODE_JoypadButton11 = 91,
+	KEYCODE_JoypadButton12 = 92,
+	KEYCODE_JoypadButton13 = 93,
+	KEYCODE_JoypadButton14 = 94,
+	KEYCODE_JoypadButton15 = 95,
+	KEYCODE_JoypadButton16 = 96,
+	KEYCODE_JoypadButton17 = 97,
+	KEYCODE_JoypadButton18 = 98,
+	KEYCODE_JoypadButton19 = 99,
+
+	KEYCODE_AxisNegMin = 100,
+	KEYCODE_JoypadAxisNeg0 = KEYCODE_AxisNegMin,
+	KEYCODE_JoypadAxisNeg1 = 101,
+	KEYCODE_JoypadAxisNeg2 = 102,
+	KEYCODE_JoypadAxisNeg3 = 103,
+	KEYCODE_JoypadAxisNeg4 = 104,
+	KEYCODE_JoypadAxisNeg5 = 105,
+	KEYCODE_AxisNegMax = 106,
+
+	KEYCODE_AxisPosMin = KEYCODE_AxisNegMax,
+	KEYCODE_JoypadAxisPos0 = KEYCODE_AxisPosMin,
+	KEYCODE_JoypadAxisPos1 = 107,
+	KEYCODE_JoypadAxisPos2 = 108,
+	KEYCODE_JoypadAxisPos3 = 109,
+	KEYCODE_JoypadAxisPos4 = 110,
+	KEYCODE_JoypadAxisPos5 = 111,
+	KEYCODE_AxisPosMax = 112,
 
 	KEYCODE_Max,
 	KEYCODE_Min = 0,
@@ -138,6 +157,40 @@ struct PlatformTime // tag = pltime
 	bool		m_fHasMsSleep;
 };
 
+enum JCONS // Joystick CONnection State
+{
+	JCONS_Disconnected,
+	JCONS_Connected,
+
+	JCONS_Nil = -1
+};
+
+struct PlatformJoystick // tag = pljoy
+{
+					PlatformJoystick()
+					:m_jcons(JCONS_Disconnected)
+					,m_iPljoy(-1)
+					,m_cGAxis(0)
+					,m_cBButton(0)
+					,m_aGAxis(nullptr)
+					,m_aBButton(nullptr)
+					,m_aGAxisPrev(nullptr)
+					,m_aBButtonPrev(nullptr)
+						{ ; }
+
+	JCONS			m_jcons;
+
+	int				m_iPljoy;		// GLFW joystick token GLFW_JOYSTICK_1 .. GLFW_JOYSTICK_LAST
+	int				m_cGAxis;
+	int				m_cBButton;
+	const f32 *		m_aGAxis;		// allocated by GLFL, scope valid until controller disconnect
+	const u8 *		m_aBButton;		// allocated by GLFL, scope valid until controller disconnect
+
+	f32 *			m_aGAxisPrev;	// allocted locally, delete upon controller disconnect
+	u8 *			m_aBButtonPrev;	// allocted locally, delete upon controller disconnect
+};
+
+static const int s_cJoystickMax = 16;
 struct Platform // tag = plat
 {
 						Platform()
@@ -146,7 +199,10 @@ struct Platform // tag = plat
 	
 	GLFWwindow *		m_pGlfwin;
 	PlatformTime		m_pltime;
+
+	PlatformJoystick	m_aPljoy[s_cJoystickMax];
 };
+extern Platform g_plat;
 
 bool FTryInitPlatform(Platform * pPlat, int nHzTarget);
 void SetupDefaultInputMapping(Famicom * pFam);

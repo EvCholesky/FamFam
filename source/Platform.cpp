@@ -9,6 +9,7 @@
 
 
 KeyPressState g_keyps;
+Platform g_plat;
 
 s64 CTickPerSecond()
 {
@@ -204,6 +205,127 @@ static void GlfwScrollCallback(GLFWwindow * pGlfwin, double dX, double dY)
     io.MouseWheel += (float)dY;
 }
 
+static void SetJcons(PlatformJoystick * pPljoy, JCONS jcons)
+{
+	if (pPljoy->m_jcons == jcons)
+		return;
+
+	pPljoy->m_jcons = jcons;
+	if (jcons == JCONS_Connected)
+	{
+		//const char * pChzName = glfwGetJoystickName(pPljoy->m_iJoy);
+		//printf("joystick \"%s\" connected\n", pChzName);
+
+		pPljoy->m_aGAxis = glfwGetJoystickAxes(pPljoy->m_iPljoy, &pPljoy->m_cGAxis);
+		pPljoy->m_aBButton = glfwGetJoystickButtons(pPljoy->m_iPljoy, &pPljoy->m_cBButton);
+
+		pPljoy->m_aGAxisPrev = new float[pPljoy->m_cGAxis];
+		pPljoy->m_aBButtonPrev = new u8[pPljoy->m_cBButton];
+
+		auto pGAxisPrevMax = &pPljoy->m_aGAxisPrev[pPljoy->m_cGAxis];
+		for (auto pGAxisPrev = pPljoy->m_aGAxisPrev; pGAxisPrev != pGAxisPrevMax; ++pGAxisPrev)
+		{
+			*pGAxisPrev = 0.0f;
+		}
+
+		auto pBButtonPrevMax = &pPljoy->m_aBButtonPrev[pPljoy->m_cBButton];
+		for (auto pBButtonPrev = pPljoy->m_aBButtonPrev; pBButtonPrev != pBButtonPrevMax; ++pBButtonPrev)
+		{
+			*pBButtonPrev = GLFW_RELEASE;
+		}
+	}
+	else
+	{
+		pPljoy->m_aGAxis = nullptr;
+		pPljoy->m_aBButton = nullptr;
+		pPljoy->m_cGAxis = 0;
+		pPljoy->m_cBButton = 0;
+		delete[] pPljoy->m_aGAxisPrev;
+		delete[] pPljoy->m_aBButtonPrev;
+	}
+}
+
+static void GlfwJoystickCallback(int iPljoy, int event)
+{
+	JCONS jcons = JCONS_Nil;
+    if (event == GLFW_CONNECTED)
+    {
+		jcons = JCONS_Connected;
+    }
+    else if (event == GLFW_DISCONNECTED)
+    {
+		jcons = JCONS_Disconnected;
+    }
+
+	if (jcons != JCONS_Nil && iPljoy < s_cJoystickMax)
+	{
+		SetJcons(&g_plat.m_aPljoy[iPljoy], jcons);
+	}
+}
+
+void InitJoystickInput(Platform * pPlat)
+{
+	glfwSetJoystickCallback(GlfwJoystickCallback);
+
+	for (int iPljoy = 0; iPljoy < FF_DIM(pPlat->m_aPljoy); ++iPljoy)
+	{
+		pPlat->m_aPljoy[iPljoy].m_iPljoy = iPljoy;
+
+		JCONS jcons = (glfwJoystickPresent(iPljoy) != 0) ? JCONS_Connected : JCONS_Disconnected;
+		SetJcons(&pPlat->m_aPljoy[iPljoy], jcons);
+	}
+}
+
+void PollJoystickInput(Platform * pPlat)
+{
+	for (int iPljoy = 0; iPljoy < FF_DIM(pPlat->m_aPljoy); ++iPljoy)
+	{
+		auto pPljoy = &pPlat->m_aPljoy[iPljoy];
+
+		for (int iBButton = 0; iBButton < pPljoy->m_cBButton; ++iBButton)
+		{
+			pPljoy->m_aBButton = glfwGetJoystickButtons(pPljoy->m_iPljoy, &pPljoy->m_cBButton);
+
+			if (pPljoy->m_aBButton[iBButton] != pPljoy->m_aBButtonPrev[iBButton])
+			{
+				u8 bButton = pPljoy->m_aBButton[iBButton];
+
+				if (bButton != pPljoy->m_aBButtonPrev[iBButton])
+				{
+					EDGES edges = (bButton) ? EDGES_Press : EDGES_Release;
+					g_keyps.m_mpKeycodeEdges[KEYCODE_JoypadButtonMin + iBButton] = edges;	
+				}
+
+				pPljoy->m_aBButtonPrev[iBButton] = bButton;
+			}
+		}
+
+		int cGAxis = ffMin(pPljoy->m_cGAxis, KEYCODE_AxisPosMax - KEYCODE_AxisPosMin);
+		for (int iGAxis = 0; iGAxis < cGAxis; ++iGAxis)
+		{
+			static const float s_gAxisThresh = 0.8f;
+			bool fWasNeg = pPljoy->m_aGAxisPrev[iGAxis] < -s_gAxisThresh;
+			bool fIsNeg = pPljoy->m_aGAxis[iGAxis] < -s_gAxisThresh;
+			if (fWasNeg != fIsNeg)
+			{
+				EDGES edges = (fIsNeg) ? EDGES_Press : EDGES_Release;
+				g_keyps.m_mpKeycodeEdges[KEYCODE_AxisNegMin + iGAxis] = edges;	
+			}
+
+			bool fWasPos = pPljoy->m_aGAxisPrev[iGAxis] > s_gAxisThresh;
+			bool fIsPos = pPljoy->m_aGAxis[iGAxis] > s_gAxisThresh;
+
+			if (fWasPos != fIsPos)
+			{
+				EDGES edges = (fIsPos) ? EDGES_Press : EDGES_Release;
+				g_keyps.m_mpKeycodeEdges[KEYCODE_AxisPosMin + iGAxis] = edges;	
+			}
+
+			pPljoy->m_aGAxisPrev[iGAxis] = pPljoy->m_aGAxis[iGAxis];
+		}
+	}
+}
+
 FamicomInput::FamicomInput()
 : m_nControllerLatch(0)
 {
@@ -224,21 +346,31 @@ void SetupDefaultInputMapping(Famicom * pFam)
 		auto pGpad = &pFamin->m_aGpad[iGpad];
 		for (int butk = 0; butk < BUTK_Max; ++butk)
 		{
-			pGpad->m_mpButkKeycode[butk] = KEYCODE_Nil;
+			pGpad->m_mpButkKeycode0[butk] = KEYCODE_Nil;
+			pGpad->m_mpButkKeycode1[butk] = KEYCODE_Nil;
 		}
 	}
 
 	Gamepad * pGpad0 = &pFamin->m_aGpad[0];
 	pGpad0->m_fIsConnected = true;
 
-	pGpad0->m_mpButkKeycode[BUTK_A] = KEYCODE_A;
-	pGpad0->m_mpButkKeycode[BUTK_B] = KEYCODE_S;
-	pGpad0->m_mpButkKeycode[BUTK_Select] = KEYCODE_Apostrophe;
-	pGpad0->m_mpButkKeycode[BUTK_Start] = KEYCODE_Enter;
-	pGpad0->m_mpButkKeycode[BUTK_Up] = KEYCODE_ArrowUp;
-	pGpad0->m_mpButkKeycode[BUTK_Down] = KEYCODE_ArrowDown;
-	pGpad0->m_mpButkKeycode[BUTK_Left] = KEYCODE_ArrowLeft;
-	pGpad0->m_mpButkKeycode[BUTK_Right] = KEYCODE_ArrowRight;
+	pGpad0->m_mpButkKeycode0[BUTK_A] = KEYCODE_A;
+	pGpad0->m_mpButkKeycode0[BUTK_B] = KEYCODE_S;
+	pGpad0->m_mpButkKeycode0[BUTK_Select] = KEYCODE_Apostrophe;
+	pGpad0->m_mpButkKeycode0[BUTK_Start] = KEYCODE_Enter;
+	pGpad0->m_mpButkKeycode0[BUTK_Up] = KEYCODE_ArrowUp;
+	pGpad0->m_mpButkKeycode0[BUTK_Down] = KEYCODE_ArrowDown;
+	pGpad0->m_mpButkKeycode0[BUTK_Left] = KEYCODE_ArrowLeft;
+	pGpad0->m_mpButkKeycode0[BUTK_Right] = KEYCODE_ArrowRight;
+
+	pGpad0->m_mpButkKeycode1[BUTK_A] = KEYCODE_JoypadButton0;
+	pGpad0->m_mpButkKeycode1[BUTK_B] = KEYCODE_JoypadButton1;
+	pGpad0->m_mpButkKeycode1[BUTK_Select] = KEYCODE_JoypadButton10;
+	pGpad0->m_mpButkKeycode1[BUTK_Start] = KEYCODE_JoypadButton11;
+	pGpad0->m_mpButkKeycode1[BUTK_Up] = KEYCODE_JoypadAxisNeg1;
+	pGpad0->m_mpButkKeycode1[BUTK_Down] = KEYCODE_JoypadAxisPos1;
+	pGpad0->m_mpButkKeycode1[BUTK_Left] = KEYCODE_JoypadAxisNeg0;
+	pGpad0->m_mpButkKeycode1[BUTK_Right] = KEYCODE_JoypadAxisPos0;
 }
 
 bool FTryInitPlatform(Platform * pPlat, int nHzTarget)
@@ -247,6 +379,8 @@ bool FTryInitPlatform(Platform * pPlat, int nHzTarget)
 		return false;
 
 	InitPlatformTime(&pPlat->m_pltime, nHzTarget);
+
+	InitJoystickInput(pPlat);
 	return true;
 }
 
@@ -297,6 +431,7 @@ void SwapBuffers(Platform * pPlat)
 void PollInput(Platform * pPlat, Famicom * pFam)
 {
 	glfwPollEvents();
+	PollJoystickInput(pPlat);
 }
 
 void ShutdownPlatform(Platform * pPlat)
