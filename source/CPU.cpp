@@ -101,24 +101,25 @@ void WriteOpenBus(Famicom * pFam, u16 addr, u8 b)
 
 u8 U8ReadPpuStatus(Famicom * pFam, u16 addr)
 {
-	auto pMemmp = &pFam->m_memmp;
-	u8 bStatus = pMemmp->m_aBRaw[PPUREG_Status];
-	pMemmp->m_aBRaw[PPUREG_Status] &= ~0x80;
+    auto pMemmp = &pFam->m_memmp;
 
-	AppendPpuCommand(&pFam->m_ppucl, PCMDK_Read, addr, 0, pFam->m_ptimCpu, pFam->m_cpu.m_pc);
+    AppendPpuCommand(&pFam->m_ppucl, PCMDK_Read, addr, 0, pFam->m_ptimCpu, pFam->m_cpu.m_pc);
+	UpdatePpu(pFam, pFam->m_ptimCpu);
 
-	u8 bRet = pMemmp->m_bPrevBusPpu & 0x1F;
-	bRet |= (bStatus & 0xE0);
+    u8 bStatus = pMemmp->m_aBRaw[PPUREG_Status];
+    pMemmp->m_aBRaw[PPUREG_Status] &= ~0x80;
 
-	pMemmp->m_bPrevBusPpu = bRet;
+    u8 bRet = pMemmp->m_bPrevBusPpu & 0x1F;
+    bRet |= (bStatus & 0xE0);
+
+    pMemmp->m_bPrevBusPpu = bRet;
 	return bRet;
 }
 
 u8 U8ReadPpuReg(Famicom * pFam, u16 addr)
 {
 	// if this is a ppu register that is updated by the ppu we need to simulate the ppu forward
-	//  otherwise we'll just read back what the CPU write
-	if ((addr == PPUREG_Status) | (addr == PPUREG_PpuAddr))
+	if (addr == PPUREG_PpuAddr)
 	{
 		UpdatePpu(pFam, pFam->m_ptimCpu);
 	}

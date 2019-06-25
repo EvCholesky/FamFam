@@ -9,6 +9,7 @@ Ppu::Ppu()
 :m_pctrl{0}
 ,m_pmask{0}
 ,m_pstatus{0}
+,m_iOamSpriteZero(-1)
 ,m_addrV(0)
 ,m_addrTemp(0)
 ,m_dXScrollFine(0)
@@ -72,8 +73,9 @@ void UpdatePpu(Famicom * pFam, const PpuTiming & ptimEnd)
 				{
 					case PPUREG_Status:
 					{
-						// reading from PPUCTRL $2000 clears the address latch used by PPUSCROLL and PPUADDR
+						// reading from PPUSTATUS $2002 clears the address latch used by PPUSCROLL and PPUADDR
 						pPpu->m_fIsFirstAddrWrite = true;
+						pFam->m_memmp.m_aBRaw[0x2002] = pPpu->m_pstatus.m_nBits;
 					} break;
 					case PPUREG_PpuData:
 					{
@@ -114,7 +116,7 @@ void UpdatePpu(Famicom * pFam, const PpuTiming & ptimEnd)
 							addrT |= u16(pPpucmd->m_bValue & 0x7) << 13;
 							addrT |= u16(pPpucmd->m_bValue & 0xF8) << 5;
 							pPpu->m_addrTemp = addrT;
-							 // doesn't set addr s here, it will be set when drawing starts ()
+							 // doesn't set addr s here, t will be copied into s at dot 257 of each scanline if rendering is enabled
 						}
 
 						pPpu->m_fIsFirstAddrWrite = !pPpu->m_fIsFirstAddrWrite;
@@ -180,6 +182,7 @@ void UpdatePpu(Famicom * pFam, const PpuTiming & ptimEnd)
 
 void AdvancePpuTiming(Famicom * pFam, s64 tickc, MemoryMap * pMemmp)
 {
+	Ppu * pPpu = &pFam->m_ppu;
 	PpuTiming * pPtim = &pFam->m_ptimCpu;
 	int dTickc = int(tickc - pPtim->m_tickcPrev);
 	pPtim->m_tickcPrev = tickc;
@@ -221,11 +224,12 @@ void AdvancePpuTiming(Famicom * pFam, s64 tickc, MemoryMap * pMemmp)
 		{
 			pFam->m_cpu.m_fTriggerNmi = true;
 		}
-		pMemmp->m_aBRaw[PPUREG_Status] |= 0x80;
+
+		pPpu->m_pstatus.m_fVerticalBlankStarted = true;
 	}
 	else if ((s_tickpStatusClear > tickpSubframePrev) & (s_tickpStatusClear <= tickpSubframe))
 	{
-		pMemmp->m_aBRaw[PPUREG_Status] = 0;
+		pPpu->m_pstatus.m_nBits = 0;
 	}
 }
 
@@ -323,6 +327,11 @@ void InitPpuMemoryMap(Ppu * pPpu, u8 * pBChr, int cBChr, NTMIR ntmir)
 		MapPpuMemorySpan(pPpu, addrPalette, pPpu->m_aBPalette, kCBPalette);
 		addrPalette += kCBPalette;
 	}
+
+	pPpu->m_aPVramMap[0x3F10] = &pPpu->m_aBPalette[0x0];
+	pPpu->m_aPVramMap[0x3F14] = &pPpu->m_aBPalette[0x4];
+	pPpu->m_aPVramMap[0x3F18] = &pPpu->m_aBPalette[0x8];
+	pPpu->m_aPVramMap[0x3F1C] = &pPpu->m_aBPalette[0xC];
 }
 
 static const int s_dXTileScreen = 32;
@@ -496,7 +505,7 @@ void DrawScreenSimple(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 	u8 * pBPatternSprite = (pPpu->m_pctrl.m_fHighSpritePatternTable) ? pBPatternHigh : pBPatternLow;
 
 	static const int s_cPalette = 4;
-	u8 aBBackground[8 * 3];
+	RGBA aRgbaBackground[8];
 	int iXSprite = 8;
 	RGBA aRgbaBgPalette[s_cRgbaPalette * s_cPalette];
 	RGBA aRgbaSpritePalette[s_cRgbaPalette * s_cPalette];
@@ -510,8 +519,6 @@ void DrawScreenSimple(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 	}
 
 	auto pTexScreen = pPpu->m_pTexScreen;
-	u8 aBAlphaBg[8];
-
 	for (int iScanline = cScanlineMin; iScanline <= cScanlineMax; ++iScanline)
 	{
 		int tickpLineMax = (iScanline == cScanlineMax) ? tickpScanlineMax : s_tickpScanineMax;
@@ -531,7 +538,7 @@ void DrawScreenSimple(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 						FetchNametableTile(pPpu, 0x2000, xTile+2, yTile, ySubtile, &aTilBackground[xTile + 2]);
 					}
 
-					RasterTileLineRgb(&aTilBackground[xTile], false, ySubtile, aRgbaBgPalette, aBBackground, aBAlphaBg);
+					RasterTileLineRgba(&aTilBackground[xTile], false, ySubtile, aRgbaBgPalette, aRgbaBackground);
 
 					u8 * pBScreen = &pTexScreen->m_pB[((xTile*8) + iScanline * pTexScreen->m_dX) * 3];
 					int x = xTile * 8;
@@ -541,6 +548,7 @@ void DrawScreenSimple(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 						int iOam = 0;
 						RGBA rgbaSprite{0};
 
+						OAM * pOamRaster = nullptr;
 						for (OAM * pOam = pPpu->m_aOamLine; pOam != pOamMax; ++pOam, ++iOam)
 						{
 							int xSubsprite = x - pOam->m_xLeft;
@@ -551,23 +559,29 @@ void DrawScreenSimple(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 								if (rgba.m_a != 0)
 								{
 									rgbaSprite = rgba;
+									//fSpritePriority = pOam->m_fPriority;
+									pOamRaster = pOam;
 									break;
 								}
 							}
 						}
 
-						if (rgbaSprite.m_a != 0)
+						RGBA rgbaBackground = aRgbaBackground[xSubtile];
+						if (rgbaSprite.m_a != 0 && (pOamRaster->m_fPriority || rgbaBackground.m_a == 0))
 						{
+							if (pOamRaster == &pPpu->m_aOamLine[pPpu->m_iOamSpriteZero])
+							{
+								pPpu->m_pstatus.m_fSpriteZeroHit = true;
+							}
 							*pBScreen++ = rgbaSprite.m_r;
 							*pBScreen++ = rgbaSprite.m_g;
 							*pBScreen++ = rgbaSprite.m_b;
 						}
 						else 
 						{
-							u8 * pBBackground = &aBBackground[xSubtile * 3];
-							*pBScreen++ = *pBBackground++;
-							*pBScreen++ = *pBBackground++;
-							*pBScreen++ = *pBBackground++;
+							*pBScreen++ = rgbaBackground.m_r;
+							*pBScreen++ = rgbaBackground.m_g;
+							*pBScreen++ = rgbaBackground.m_b;
 						}
 					}
 				}
@@ -575,6 +589,8 @@ void DrawScreenSimple(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 				{
 					// compute m_oamLine and fetch their tiles
 					int cOamLine = 0;
+					pPpu->m_iOamSpriteZero = -1;
+
 					RGBA * pRgbaSpriteLine = pPpu->m_aRgbaSpriteLine;
 					OAM * pOamMax = FF_PMAX(pPpu->m_aOam);
 					for (OAM * pOam = pPpu->m_aOam; pOam != pOamMax; ++pOam)
@@ -600,7 +616,13 @@ void DrawScreenSimple(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 
 							RasterTileLineRgba(pTilSprite, pOam->m_fFlipHoriz, ySubtile, aRgbaSpritePalette, pRgbaSpriteLine);
 							pRgbaSpriteLine += 8;
+
+							if (pOam == &pPpu->m_aOam[0])
+							{
+								pPpu->m_iOamSpriteZero = cOamLine;
+							}
 							pPpu->m_aOamLine[cOamLine++] = *pOam;
+
 							if (cOamLine >= 8)
 								break;
 						}
@@ -634,8 +656,12 @@ void DrawScreenSimple(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 			}
 			tickpScanline = 0;
 		}
-		else if (iScanline = 261)
+		else if (iScanline = 261) // pre-render
 		{
+			// fSpriteZeroHit should be cleared on the first dot of the pre-render scanline
+			// ... is cleared in AdvancePpuTiming
+			pPpu->m_pstatus.m_fSpriteZeroHit = false;
+
 			//pre render line
 			FetchNametableTile(pPpu, 0x2000, 0, 0, 0, &aTilBackground[0]);
 			FetchNametableTile(pPpu, 0x2000, 1, 0, 0, &aTilBackground[1]);

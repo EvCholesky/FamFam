@@ -6,7 +6,7 @@ static const int kCBCieramMax = FF_KIB(4);
 static const int kCBChrMapped = FF_KIB(8);
 static const int kCBVramAddressable = FF_KIB(16);
 static const int kCBPalette = 32;
-static const int s_cBVramGranularity = 32;		
+static const int s_cBVramGranularity = 1;		
 
 static const int s_cXChrTile = 16;
 static const int s_cYChrTile = 16;
@@ -234,6 +234,7 @@ struct Ppu
 
 	OAM				m_aOam[64];				// internal OAM memory - sprite data
 	OAM				m_aOamLine[8];			// internal sprite memory inaccessible to the program; used to cache the sprites rendered in the current scanline. 
+	int				m_iOamSpriteZero;		// which sprite in oamLine corresponds to sprite zero
 
 	TileLine		m_aTilLine[8];
 	TileLine		m_aTilBackground[32];
