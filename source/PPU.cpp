@@ -203,7 +203,7 @@ void AdvancePpuTiming(Famicom * pFam, s64 tickc, MemoryMap * pMemmp)
 
 	static const int s_tickpVBlankSet = 241 * s_dTickpPerScanline + 1; // vblank happens on the first cycle of the 241st scanline of a frame.
 	static const int s_tickpStatusClear = 261 * s_dTickpPerScanline + 1; // vblank is cleared  on the first cycle of the prerender scanline.
-	if (fIsRenderEnabled & fIsOddFrame & (cFramePrev != cFrame))
+	if ((fIsRenderEnabled & fIsOddFrame) & (cFramePrev != cFrame))
 	{
 		// Odd frames (with rendering enabled) are one cycle shorter - this cycle is dropped from the
 		//  first idle cycle of the  first scanline
@@ -351,6 +351,8 @@ void FetchNametableTile(Ppu * pPpu, u16 addrBase, int xTile, int yTile, int ySub
 	pTilOut->m_iPalette = (bAttribute >> cBitShift) & 0x3;
 }
 
+// BB - I tried removing this and just changing all of the textures to 8888 rgba, it seemed to make things slower
+// (which makes sense) I need to revisit when I have better timeing tools.
 void RasterTileLineRgb(TileLine * pTil, bool fFlipHoriz, int ySubtile, RGBA * aRgbaPalette, u8 * pRgb, u8 * pBAlpha)
 {
 	u8 bLow = pTil->m_bLow;
@@ -378,6 +380,43 @@ void RasterTileLineRgb(TileLine * pTil, bool fFlipHoriz, int ySubtile, RGBA * aR
 		*pRgbIt++ = rgba.m_g;
 		*pRgbIt++ = rgba.m_b;
 		*pBAlpha++ = (iPalette != 0);
+	}
+}
+
+void RasterTileLineRgba(TileLine * pTil, bool fFlipHoriz, int ySubtile, RGBA * aRgbaPalette, RGBA * pRgba)
+{
+	u8 bLow = pTil->m_bLow;
+	u8 bHigh = pTil->m_bHigh;
+	RGBA * pRgbaIt = pRgba;
+	int dRgbaPalette = pTil->m_iPalette * s_cRgbaPalette;
+	static const u8 s_aBAlpha[] = {0, 255, 255, 255};
+
+	if (fFlipHoriz)
+	{
+		int iPalette; 
+		RGBA * pRgbaMax = &pRgba[8];
+		while (pRgbaIt != pRgbaMax)
+		{
+			iPalette = (bLow & 0x1) | ((bHigh & 0x1) << 1);
+			bLow >>= 1;
+			bHigh >>= 1;
+
+			RGBA rgba = aRgbaPalette[iPalette + dRgbaPalette];
+			rgba.m_a = s_aBAlpha[iPalette];
+			*pRgbaIt++ = rgba;
+		}
+	}
+	else
+	{
+		for (int xSubtile = 0; xSubtile < 8; ++xSubtile)
+		{
+			int nShift = 7-xSubtile;
+			int iPalette = ((bLow >> nShift) & 0x1) | (((bHigh >> nShift) & 0x1) << 1);
+
+			RGBA rgba = aRgbaPalette[iPalette + dRgbaPalette];
+			rgba.m_a = s_aBAlpha[iPalette];
+			*pRgbaIt++ = rgba;
+		}
 	}
 }
 
@@ -458,22 +497,19 @@ void DrawScreenSimple(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 
 	static const int s_cPalette = 4;
 	u8 aBBackground[8 * 3];
-	u8 aBSprite[8 * 3];
 	int iXSprite = 8;
 	RGBA aRgbaBgPalette[s_cRgbaPalette * s_cPalette];
 	RGBA aRgbaSpritePalette[s_cRgbaPalette * s_cPalette];
 	for (int iRgb = 0; iRgb < FF_DIM(aRgbaBgPalette); ++iRgb)
 	{
 		// the first index in each palette is the shared background color
-		int iHwcol = ((iRgb % s_cRgbaPalette) == 0) ? 0 : iRgb;
+		int iHwcol = ((iRgb & 0x3) == 0) ? 0 : iRgb;
 		aRgbaBgPalette[iRgb] = RgbaFromHwcol(HWCOL(pPpu->m_aBPalette[iHwcol]));
 
 		aRgbaSpritePalette[iRgb] = RgbaFromHwcol(HWCOL(pPpu->m_aBPalette[iHwcol + s_cPalette*s_cRgbaPalette]));
 	}
 
 	auto pTexScreen = pPpu->m_pTexScreen;
-
-	u8 aBAlpha[8];
 	u8 aBAlphaBg[8];
 
 	for (int iScanline = cScanlineMin; iScanline <= cScanlineMax; ++iScanline)
@@ -487,9 +523,9 @@ void DrawScreenSimple(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 				if (tickpScanline < 258)
 				{
 					// Fetch background tile
-					int yTile = iScanline / 8;
-					int ySubtile = iScanline % 8;
-					int xTile = tickpScanline / 8;
+					int yTile = iScanline >> 3;		 // div 8
+					int ySubtile = iScanline & 0x7;	 // mod 8
+					int xTile = tickpScanline >> 3;	 // div 8
 					if (xTile + 2 < FF_DIM(pPpu->m_aTilBackground))
 					{
 						FetchNametableTile(pPpu, 0x2000, xTile+2, yTile, ySubtile, &aTilBackground[xTile + 2]);
@@ -498,32 +534,33 @@ void DrawScreenSimple(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 					RasterTileLineRgb(&aTilBackground[xTile], false, ySubtile, aRgbaBgPalette, aBBackground, aBAlphaBg);
 
 					u8 * pBScreen = &pTexScreen->m_pB[((xTile*8) + iScanline * pTexScreen->m_dX) * 3];
-					for (int xSubtile=0; xSubtile < 8; ++xSubtile)
+					int x = xTile * 8;
+					for (int xSubtile=0; xSubtile < 8; ++xSubtile, ++x)
 					{
-						if (iXSprite >= 8)
+						OAM * pOamMax = FF_PMAX(pPpu->m_aOamLine);
+						int iOam = 0;
+						RGBA rgbaSprite{0};
+
+						for (OAM * pOam = pPpu->m_aOamLine; pOam != pOamMax; ++pOam, ++iOam)
 						{
-							int x = xTile * 8 + xSubtile;
-							OAM * pOamMax = FF_PMAX(pPpu->m_aOamLine);
-							int iOam = 0;
-							for (OAM * pOam = pPpu->m_aOamLine; pOam != pOamMax; ++pOam, ++iOam)
+							int xSubsprite = x - pOam->m_xLeft;
+							if ((xSubsprite >= 0) && (xSubsprite < 8))
 							{
-								int xSubsprite = x - pOam->m_xLeft;
-								if ((xSubsprite >= 0) && (xSubsprite < 8))
+								RGBA rgba = pPpu->m_aRgbaSpriteLine[iOam * 8 + xSubsprite];
+
+								if (rgba.m_a != 0)
 								{
-									iXSprite = xSubsprite;
-									int ySubtileSprite = iScanline - pOam->m_yTop;
-									RasterTileLineRgb(&aTilLine[iOam], pOam->m_fFlipHoriz, ySubtileSprite, aRgbaSpritePalette, aBSprite, aBAlpha);
+									rgbaSprite = rgba;
 									break;
 								}
 							}
 						}
-						
-						if (iXSprite < 8 && aBAlpha[iXSprite])
+
+						if (rgbaSprite.m_a != 0)
 						{
-							u8 * pBSprite = &aBSprite[iXSprite * 3];
-							*pBScreen++ = *pBSprite++;
-							*pBScreen++ = *pBSprite++;
-							*pBScreen++ = *pBSprite++;
+							*pBScreen++ = rgbaSprite.m_r;
+							*pBScreen++ = rgbaSprite.m_g;
+							*pBScreen++ = rgbaSprite.m_b;
 						}
 						else 
 						{
@@ -532,13 +569,13 @@ void DrawScreenSimple(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 							*pBScreen++ = *pBBackground++;
 							*pBScreen++ = *pBBackground++;
 						}
-						++iXSprite;
 					}
 				}
 				else if (tickpScanline == 264) // should start at 258, but we'll adjust
 				{
 					// compute m_oamLine and fetch their tiles
 					int cOamLine = 0;
+					RGBA * pRgbaSpriteLine = pPpu->m_aRgbaSpriteLine;
 					OAM * pOamMax = FF_PMAX(pPpu->m_aOam);
 					for (OAM * pOam = pPpu->m_aOam; pOam != pOamMax; ++pOam)
 					{
@@ -561,6 +598,8 @@ void DrawScreenSimple(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 							pTilSprite->m_bHigh = pBPattern[dB | 0x8];
 							pTilSprite->m_iPalette = pOam->m_palette;
 
+							RasterTileLineRgba(pTilSprite, pOam->m_fFlipHoriz, ySubtile, aRgbaSpritePalette, pRgbaSpriteLine);
+							pRgbaSpriteLine += 8;
 							pPpu->m_aOamLine[cOamLine++] = *pOam;
 							if (cOamLine >= 8)
 								break;
@@ -574,6 +613,11 @@ void DrawScreenSimple(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 						pOam->m_yTop = 0xFF;
 						pOam->m_xLeft = 0;
 						pOam->m_iTile = 0xFF;
+
+						for (int iRgba = 0; iRgba < 8; ++iRgba)
+						{
+							*pRgbaSpriteLine++ = RGBA{0};
+						}
 					}
 				}
 				// BB - these are actually one tickp early because we're operating eight cycles at a time

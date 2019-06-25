@@ -234,10 +234,11 @@ struct Ppu
 
 	OAM				m_aOam[64];				// internal OAM memory - sprite data
 	OAM				m_aOamLine[8];			// internal sprite memory inaccessible to the program; used to cache the sprites rendered in the current scanline. 
-	//u8				m_aBSpriteTile[16];		// cached tile information for the next line's sprites
+
 	TileLine		m_aTilLine[8];
 	TileLine		m_aTilBackground[32];
 	TileLine		m_aTilBgCache[3];
+	RGBA			m_aRgbaSpriteLine[8*8];	// rgba values for this line's rastered sprites
 	int				m_iLineToggle;
 
 	u16				m_addrV;				// address used by PPUDATA $2007 and PPUSCROLL $2005
