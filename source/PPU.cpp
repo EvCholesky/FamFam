@@ -160,10 +160,21 @@ void UpdatePpu(Famicom * pFam, const PpuTiming & ptimEnd)
 					} break;
 					case PPUREG_PpuData:
 					{
-						FF_ASSERT(false, "TBD");
+						u8 * pB = PBVram(pPpu, pPpu->m_addrV);
+						u8 bResult = *pB;
+						if (pPpucmd->m_iPpucres >= 0)
+						{
+							pPpucl->m_aPpucres[pPpucmd->m_iPpucres].m_b = (pPpu->m_addrV < 0x3F00) ? pPpu->m_bReadBuffer : bResult;
+						}
+						pPpu->m_bReadBuffer = bResult;
+
+						pPpu->m_addrV += (pPpu->m_pctrl.m_dBVramAddressIncrement) ? 32 : 1;
 					} break;
 					default:
+					{
+						FF_ASSERT(false, "unhandled read");
 						break;
+					} break;
 				}
 			}
 			else

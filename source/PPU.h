@@ -286,6 +286,7 @@ struct Ppu
 	u16				m_addrTemp;				// TempAddress used by PPUSCROLL
 	u8				m_dXScrollFine;
 	u8				m_bOamAddr;				// least significant byte of the OAM address
+	u8				m_bReadBuffer;
 	bool			m_fIsFirstAddrWrite;	// address register latch 
 
 	Texture *		m_pTexScreen;

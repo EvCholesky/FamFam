@@ -100,6 +100,23 @@ void WriteOpenBus(Famicom * pFam, u16 addr, u8 b)
 	pMemmp->m_bPrevBus = b;
 }
 
+
+int IPpucresAllocate(PpuCommandList * pPpucl)
+{
+	for (int iPpucresIt = 0; iPpucresIt != FF_DIM(pPpucl->m_aPpucres); ++iPpucresIt)
+	{
+		auto pPpucres = &pPpucl->m_aPpucres[iPpucresIt];
+		if (pPpucres->m_fInUse == false)
+		{
+			pPpucres->m_fInUse = true;
+			return iPpucresIt;
+		}
+	}
+
+	FF_ASSERT(false, "no more result slots");
+	return -1;
+}
+
 u8 U8ReadPpuStatus(Famicom * pFam, u16 addr)
 {
     auto pMemmp = &pFam->m_memmp;
@@ -107,18 +124,7 @@ u8 U8ReadPpuStatus(Famicom * pFam, u16 addr)
 	// There's a tricky problem that happens here... we want to read the value of PPUREG_Status as the ppu executes to this 
 	//  cycle, but the ppu will clear the NMI flag after it's read.
 	PpuCommandList * pPpucl = &pFam->m_ppucl;
-	int iPpucres = -1;
-	for (int iPpucresIt = 0; iPpucresIt != FF_DIM(pPpucl->m_aPpucres); ++iPpucresIt)
-	{
-		auto pPpucres = &pPpucl->m_aPpucres[iPpucresIt];
-		if (pPpucres->m_fInUse == false)
-		{
-			pPpucres->m_fInUse = true;
-			iPpucres = iPpucresIt;
-			break;
-		}
-	}
-	FF_ASSERT(iPpucres >= 0, "no more result slots");
+	int iPpucres = IPpucresAllocate(pPpucl);
 
 	bool fNmiStarted = pFam->m_ppu.m_pstatus.m_fVerticalBlankStarted;
 
@@ -139,16 +145,29 @@ u8 U8ReadPpuStatus(Famicom * pFam, u16 addr)
 
 u8 U8ReadPpuReg(Famicom * pFam, u16 addr)
 {
+	PpuCommandList * pPpucl = &pFam->m_ppucl;
+	auto pMemmp = &pFam->m_memmp;
+	u8 b;
+
 	// if this is a ppu register that is updated by the ppu we need to simulate the ppu forward
-	if (addr == PPUREG_PpuAddr)
+	if (addr == PPUREG_PpuData)
 	{
+		int iPpucres = IPpucresAllocate(pPpucl);
+		AppendPpuCommand(pPpucl, PCMDK_Read, addr, 0, pFam->m_ptimCpu, iPpucres, pFam->m_cpu.m_pc);
 		UpdatePpu(pFam, pFam->m_ptimCpu);
+
+		auto pPpucres = &pPpucl->m_aPpucres[iPpucres];
+		b = pPpucres->m_b;
+		pPpucres->m_fInUse = false;
+	}
+	else
+	{
+		AppendPpuCommand(pPpucl, PCMDK_Read, addr, 0, pFam->m_ptimCpu, -1, pFam->m_cpu.m_pc);
+
+		u8 * pB = pMemmp->m_mpAddrPB[addr];
+		b = *pB; 
 	}
 
-	auto pMemmp = &pFam->m_memmp;
-	u8 * pB = pMemmp->m_mpAddrPB[addr];
-
-	u8 b = *pB; 
 	pMemmp->m_bPrevBusPpu = b;
 	return b;
 }
