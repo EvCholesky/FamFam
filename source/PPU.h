@@ -22,6 +22,7 @@ static const int s_dTickpPerFrame = s_dTickpPerScanline * s_cScanlinesPerFrame;
 struct Famicom;
 struct MemoryMap;
 struct Platform;
+struct Ppu;
 struct Texture;
 
 enum NTMIR	// Name Table MIRroring
@@ -77,22 +78,59 @@ struct PpuCommand  // tag = ppucmd
 {
 	u8				m_bValue;
 	PCMDK			m_pcmdk;
+	s8				m_iPpucres;			// result slot to the read result; -1 for no store.
 	u16				m_addr;
 	u16				m_addrInstDebug;	// address of the instruction that caused this command
 	u64				m_tickp;			// BB - could save space if these were stored as dTickp, and we adjusted when we removed the executed spans  
 };
 
+struct PpuCommandResult	// tag ppucres
+{
+	u8				m_fInUse;
+	u8				m_b;
+};
+
+#define FF_RECORD_PPU_HISTORY 0
+static const int s_cPpuchf = 4;
+struct PpuCommandHistory // tag = ppuch
+{
+	PpuCommand		m_ppucmd;	
+	s16				m_cScanline;
+	s16				m_iCol;
+	u16				m_addrTemp;
+	u16				m_addrV;
+};
+
+struct PpuCommandHistoryFrame // tag = ppuchf
+{
+	s64							m_cFrame;	
+	u16							m_addrTempBegin;
+	u16							m_addrVBegin;
+	DynAry<PpuCommandHistory>	m_aryPpuch;
+};
+
+#if FF_RECORD_PPU_HISTORY
+void ClearCommandHistory(Ppu * pPpu);
+void RecordCommandHistory(Ppu * pPpu, u64 tickp, PpuCommand * ppucmd);
+#else
+inline void ClearCommandHistory(Ppu * pPpu) {}
+inline void RecordCommandHistory(Ppu * pPpu, u64 tickp, PpuCommand * ppucmd) {} 
+#endif
+
 struct PpuCommandList // tag = ppucl
 {
-						PpuCommandList()
-						:m_iPpucmdExecute(0)
-							{ ; }
+							PpuCommandList()
+							:m_iPpucmdExecute(0)
+								{ ZeroAB(m_aPpucres, sizeof(m_aPpucres));  }
+							~PpuCommandList();
 
-	int					m_iPpucmdExecute;		// index of next command to execute
-	DynAry<PpuCommand>	m_aryPpucmd;
+	int						m_iPpucmdExecute;		// index of next command to execute
+	DynAry<PpuCommand>		m_aryPpucmd;
+		
+	PpuCommandResult		m_aPpucres[8];
 }; 
 
-void AppendPpuCommand(PpuCommandList * pPpucl, PCMDK pchk, u16 addr, u8 bValue, const PpuTiming & ptim, u16 addrDebug);
+void AppendPpuCommand(PpuCommandList * pPpucl, PCMDK pchk, u16 addr, u8 bValue, const PpuTiming & ptim, s8 iPpucres = -1, u16 addrDebug = 0);
 void UpdatePpu(Famicom * pFam, const PpuTiming & ptimEnd);
 
 union RGBA // tag = rgba 
@@ -187,7 +225,7 @@ union OAM	// Object Attribute Memory, aka sprite data
 
 		u8	m_palette:2;	// palette (4..7) of sprite
 		u8  m_pad:3;		// should always read back as zero
-		u8  m_fPriority:1;	// (0==in front of bg, 1==behind bg) 
+		u8  m_fBgPriority:1;	// (0==in front of bg, 1==behind bg) 
 		u8	m_fFlipHoriz:1;
 		u8	m_fFlipVert:1;
 
@@ -221,6 +259,7 @@ struct TileLine // tag = til // one ySubtile slice
 struct Ppu
 {
 					Ppu();
+					~Ppu();
 
 	PpuControl		m_pctrl;
 	PpuMask			m_pmask;
@@ -235,12 +274,13 @@ struct Ppu
 	OAM				m_aOam[64];				// internal OAM memory - sprite data
 	OAM				m_aOamLine[8];			// internal sprite memory inaccessible to the program; used to cache the sprites rendered in the current scanline. 
 	int				m_iOamSpriteZero;		// which sprite in oamLine corresponds to sprite zero
+	u32				m_nShiftBg;
+	u32				m_nShiftBgAttrib;		// 
 
 	TileLine		m_aTilLine[8];
 	TileLine		m_aTilBackground[32];
 	TileLine		m_aTilBgCache[3];
 	RGBA			m_aRgbaSpriteLine[8*8];	// rgba values for this line's rastered sprites
-	int				m_iLineToggle;
 
 	u16				m_addrV;				// address used by PPUDATA $2007 and PPUSCROLL $2005
 	u16				m_addrTemp;				// TempAddress used by PPUSCROLL
@@ -249,6 +289,9 @@ struct Ppu
 	bool			m_fIsFirstAddrWrite;	// address register latch 
 
 	Texture *		m_pTexScreen;
+
+	FixAry<PpuCommandHistoryFrame, s_cPpuchf>
+					m_aryPpuchf;
 };
 
 void StaticInitPpu(Ppu * pPpu, Platform * pPlat);
@@ -257,3 +300,4 @@ void DrawChrMemory(Ppu * pPpu, Texture * pTex, bool fUse8x16);
 void DrawNameTableMemory(Ppu * pPpu, Texture * pTex);
 
 void DrawScreenSimple(Ppu * pPpu, u64 tickpMin, u64 tickpMax);
+void DrawScreenNew(Ppu * pPpu, u64 tickpMin, u64 tickpMax);

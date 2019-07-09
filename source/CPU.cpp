@@ -11,6 +11,7 @@
 
 Famicom g_fam;
 static const char s_chWildcard = '?';
+bool s_fTraceCpu = false;
 
 const AddrModeInfo * PAmodinfoFromAmod(AMOD amod)
 {
@@ -103,11 +104,31 @@ u8 U8ReadPpuStatus(Famicom * pFam, u16 addr)
 {
     auto pMemmp = &pFam->m_memmp;
 
-    AppendPpuCommand(&pFam->m_ppucl, PCMDK_Read, addr, 0, pFam->m_ptimCpu, pFam->m_cpu.m_pc);
-	UpdatePpu(pFam, pFam->m_ptimCpu);
+	// There's a tricky problem that happens here... we want to read the value of PPUREG_Status as the ppu executes to this 
+	//  cycle, but the ppu will clear the NMI flag after it's read.
+	PpuCommandList * pPpucl = &pFam->m_ppucl;
+	int iPpucres = -1;
+	for (int iPpucresIt = 0; iPpucresIt != FF_DIM(pPpucl->m_aPpucres); ++iPpucresIt)
+	{
+		auto pPpucres = &pPpucl->m_aPpucres[iPpucresIt];
+		if (pPpucres->m_fInUse == false)
+		{
+			pPpucres->m_fInUse = true;
+			iPpucres = iPpucresIt;
+			break;
+		}
+	}
+	FF_ASSERT(iPpucres >= 0, "no more result slots");
 
-    u8 bStatus = pMemmp->m_aBRaw[PPUREG_Status];
-    pMemmp->m_aBRaw[PPUREG_Status] &= ~0x80;
+	bool fNmiStarted = pFam->m_ppu.m_pstatus.m_fVerticalBlankStarted;
+
+    AppendPpuCommand(pPpucl, PCMDK_Read, addr, 0, pFam->m_ptimCpu, iPpucres, pFam->m_cpu.m_pc);
+	UpdatePpu(pFam, pFam->m_ptimCpu);
+	
+	auto pPpucres = &pPpucl->m_aPpucres[iPpucres];
+	u8 bStatus = pPpucres->m_b;
+	pPpucres->m_fInUse = false;
+    pMemmp->m_aBRaw[PPUREG_Status] = bStatus & ~0x80;
 
     u8 bRet = pMemmp->m_bPrevBusPpu & 0x1F;
     bRet |= (bStatus & 0xE0);
@@ -137,7 +158,7 @@ void WritePpuReg(Famicom * pFam, u16 addr, u8 b)
 	auto pMemmp = &pFam->m_memmp;
 	const MemoryDescriptor & memdesc = pMemmp->m_mpAddrMemdesc[addr];
 
-	AppendPpuCommand(&pFam->m_ppucl, PCMDK_Write, addr, b, pFam->m_ptimCpu, pFam->m_cpu.m_pc);
+	AppendPpuCommand(&pFam->m_ppucl, PCMDK_Write, addr, b, pFam->m_ptimCpu, -1, pFam->m_cpu.m_pc);
 
 	pMemmp->m_bPrevBusPpu = b;
 	u8 bDummy;
@@ -170,7 +191,7 @@ void DumpOam(Famicom * pFam)
 			pOam->m_iTile,
 			pOam->m_xLeft, pOam->m_yTop,
 			pOam->m_palette,
-			pOam->m_fPriority,
+			pOam->m_fBgPriority,
 			(pOam->m_fFlipHoriz)? "flipH,":"",
 			(pOam->m_fFlipVert) ? "flipV,":"");
 	}
@@ -1836,6 +1857,8 @@ bool FTryRunLogTest(const char * pChzFilenameRom, const char * pChzFilenameLog, 
 	Cart cart;
 	fam.m_pCart = &cart;
 
+	StaticInitFamicom(&fam, nullptr);
+
 	FPOW fpow = FPOW_LogTest;
 	if (!FTryLoadRomFromFile(pChzFilenameRom, &cart, &fam, fpow))
 	{
@@ -1889,7 +1912,6 @@ bool FTryRunLogTest(const char * pChzFilenameRom, const char * pChzFilenameLog, 
 		auto cFrameNew = CFrameFromTickp(fam.m_ptimCpu.m_tickp);
 		if (cFrameNew != cFramePrev)
 		{
-			// update the ppu command list to avoid overflowing
 			UpdatePpu(&fam, fam.m_ptimCpu);
 		}
 	}
@@ -1944,10 +1966,20 @@ void ExecuteFamicomFrame(Famicom * pFam)
 		return;
 	// run the CPU from cycle 0 until the last cycle of the last pixel of scanline 261
 
-	s64 cFramePrev = CFrameFromTickp(pFam->m_ptimCpu.m_tickp);
-	while (cFramePrev == CFrameFromTickp(pFam->m_ptimCpu.m_tickp))
+	if (pFam->m_stepk == STEPK_Run)
 	{
-		StepCpu(pFam);
+		s64 cFramePrev = CFrameFromTickp(pFam->m_ptimCpu.m_tickp);
+		while (pFam->m_stepk == STEPK_Run && cFramePrev == CFrameFromTickp(pFam->m_ptimCpu.m_tickp))
+		{
+			if (s_fTraceCpu)
+			{
+				char aChz[s_cChLine];
+				PrintCpuStateForLog(pFam, aChz, FF_DIM(aChz));
+				printf("%s\n", aChz);
+			}
+
+			StepCpu(pFam);
+		}
 	}
 
 	s64 cFrame;
@@ -1958,4 +1990,4 @@ void ExecuteFamicomFrame(Famicom * pFam)
 	ptimFrameEnd.m_tickp -= tickpSubframe;
 	UpdatePpu(pFam, ptimFrameEnd);
 }
-
+ 

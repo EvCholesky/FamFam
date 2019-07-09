@@ -353,7 +353,6 @@ public:
 
 				DynAry(const DynAry & rhs)
 					{
-						m_pAlloc = rhs.m_pAlloc;
 						EnsureSize(rhs.C());
 
 						const T * pMac = rhs.PMac();
@@ -369,10 +368,9 @@ public:
 	DynAry<T> & operator= (const DynAry & rhs)
 					{
 						Clear();
-						m_pAlloc = rhs.m_pAlloc;
 						EnsureSize(rhs.C());
 
-						const T * pMac = rhs.PMac();
+						const T * pMac = rhs.PMax();
 						for (const T * pT = rhs.A(); pT != pMac; ++pT)
 						{
 							Append(*pT);

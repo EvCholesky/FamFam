@@ -232,11 +232,20 @@ struct FamicomInput		// tag = famin
 	Gamepad			m_aGpad[s_cGamepadMax];	
 };
 
+enum STEPK
+{
+	STEPK_Stop,
+	STEPK_StepOver,
+	STEPK_StepInto,
+	STEPK_Run,
+};
+
 struct Famicom // tag = fam
 {
 					Famicom()
 					:m_tickp(0)
 					,m_fIsRomLoaded(false)
+					,m_stepk(STEPK_Run)
 					,m_pKeyps(nullptr)
 					,m_famin()
 					,m_pCart(nullptr)
@@ -248,6 +257,7 @@ struct Famicom // tag = fam
 	PpuTiming		m_ptimCpu;		// how far has the cpu simulation processed the ppuClock
 	u64				m_tickp;		// how far has the ppu simulated
 	bool			m_fIsRomLoaded;
+	STEPK			m_stepk;
 
 	Ppu				m_ppu;
 	PpuCommandList	m_ppucl;
