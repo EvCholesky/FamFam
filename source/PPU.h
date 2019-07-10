@@ -300,5 +300,4 @@ void InitPpuMemoryMap(Ppu * pPpu, u8 * pBChr, int cBChr, NTMIR ntmir);
 void DrawChrMemory(Ppu * pPpu, Texture * pTex, bool fUse8x16);
 void DrawNameTableMemory(Ppu * pPpu, Texture * pTex);
 
-void DrawScreenSimple(Ppu * pPpu, u64 tickpMin, u64 tickpMax);
-void DrawScreenNew(Ppu * pPpu, u64 tickpMin, u64 tickpMax);
+void DrawScreen(Ppu * pPpu, u64 tickpMin, u64 tickpMax);

@@ -139,7 +139,7 @@ void UpdatePpu(Famicom * pFam, const PpuTiming & ptimEnd)
 		}
 
 		// update ppu until the new time
-		DrawScreenNew(pPpu, pFam->m_tickp, tickpNext);
+		DrawScreen(pPpu, pFam->m_tickp, tickpNext);
 
 		if (pPpucmd)
 		{
@@ -499,14 +499,60 @@ void FetchNametableTile(Ppu * pPpu, u16 addrBase, int xTile, int yTile, int ySub
 	pPpu->m_nShiftBgAttrib = (pPpu->m_nShiftBgAttrib << 16) | nShiftAttrib;
 }
 
+static inline void FetchNametableTile(Ppu * pPpu, u16 addrV)
+{
+	int xTile = (addrV & 0x1F);
+	int yTile = (addrV & 0x3E0) >> 5; 
+	int ySubtile = (addrV & 0x7000) >> 12;
+
+	u16 nNametable = (addrV & 0xC00);// >> 10;
+
+	u8 * pBNameTable = PBVram(pPpu, 0x2000 | nNametable);
+	u16 iTile = pBNameTable[xTile + yTile * s_dXTileScreen];
+
+	u16 addrPattern = (pPpu->m_pctrl.m_fHighBgPaternTable) ? 0x1000 : 0x0;
+	u8 * pBPattern = PBVram(pPpu, addrPattern);
+
+	int dB = (ySubtile & 0x7) | (iTile << 4);
+	u8 bL = pBPattern[dB];
+	u8 bH = pBPattern[dB | 0x8];
+
+	static const int s_dXAttributeCell = 8;
+	static const int s_dBAttribute = s_dXTileScreen * s_dYTileScreen;
+
+	u8 * pBAttribute = pBNameTable + s_dBAttribute;
+	u8 bAttrib = pBAttribute[(xTile>>2) + ((yTile>>2) * s_dXAttributeCell)];
+	
+	int cBitShift = (xTile & 0x2) ? 2 : 0;
+	cBitShift += (yTile & 0x2) ? 4 : 0;
+	u8 nAttrib = (bAttrib >> cBitShift) & 0x3;
+
+	// Swizzle both 8 bit patterns into one 16bit pattern and add it to our bg shift register
+	// bLow  = hgfedcba
+	// bHigh = HGFEDCBA -> nShiftBg == HhGgFfEeDdCcBbAa
+
+	// and shift in a 2bit attribute for each pixel too
+	// attrib = Pp ->nShiftAttrib = PpPpPpPpPpPpPpPp
+
+	u32 nShiftBg = 0;
+	u32 nShiftAttrib = 0;
+	for (int iCol = 0; iCol < 8; ++iCol)
+	{
+		u32 nSel = 0x1 << iCol; 
+		nShiftBg	 |= ((u32(bL) & nSel) << iCol) | ((u32(bH) & nSel) << (iCol+1));
+		nShiftAttrib |= u32(nAttrib) << (iCol * 2);
+	}
+
+	pPpu->m_nShiftBg = (pPpu->m_nShiftBg << 16) | nShiftBg;
+	pPpu->m_nShiftBgAttrib = (pPpu->m_nShiftBgAttrib << 16) | nShiftAttrib;
+}
+
 static inline void FetchNametableTile(Ppu * pPpu, u16 addrV, TileLine * aTilBackground)
 {
 	int xTile = (addrV & 0x1F);
 	int yTile = (addrV & 0x3E0) >> 5; 
 	int ySubtile = (addrV & 0x7000) >> 12;
 
-	// BB - fix nametable problems here!
-	//u16 nNametable = 0;
 	u16 nNametable = (addrV & 0xC00);// >> 10;
 
 	FetchNametableTile(pPpu, 0x2000 | nNametable, xTile, yTile, ySubtile, &aTilBackground[xTile]);
@@ -563,7 +609,7 @@ void RasterShiftRgb(u32 nShiftPattern, u32 nShiftAttrib, int ySubtile, int xFine
 	}
 }
 
-void RasterTileLineRgba(TileLine * pTil, bool fFlipHoriz, int ySubtile, RGBA * aRgbaPalette, RGBA * pRgba)
+void RasterTileLineRgba(TileLine * pTil, bool fFlipHoriz, RGBA * aRgbaPalette, RGBA * pRgba)
 {
 	u8 bLow = pTil->m_bLow;
 	u8 bHigh = pTil->m_bHigh;
@@ -655,379 +701,28 @@ void DrawNameTableMemory(Ppu * pPpu, Texture * pTex)
 
 u16 AddrIncVramH(u16 addrV)
 {
-#if 0
-	if ((addrV & 0x001F) <= 31) // if coarse X == 31
+	if ((addrV & 0x001F) != 31) // if coarse X != 31
 		return addrV + 1;
 	return addrV ^ 0x41F;	// set coarse X == 0 and switch horiz nametable
-#else
-
-	//addrV &= ~0x001F;         // coarse X = 0
-	//addrV ^= 0x0400;          // switch horizontal nametable
-	//return addrV;
-	
-	if ((addrV & 0x001F) == 31) // if coarse X == 31
-	{
-		addrV &= ~0x001F;          // coarse X = 0
-		addrV ^= 0x0400;          // switch horizontal nametable
-	}
-	else
-	{
-	  addrV += 1;                // increment coarse X}
-	}
-	return addrV;
-#endif
 }
 
 u16 AddrIncVramV(u16 addrV)
 {
-#if 0
 	if ((addrV & 0x7000) != 0x7000)        // if fine Y < 7
 	{
-	  return addrV + 0x1000;                // increment fine Y
+		return addrV + 0x1000;             // increment fine Y
 	}
-
-	// why do this when it's just stripped in the end?
-	addrV &= ~0x7000;                     // fine Y = 0
 
 	int yCoarse = (addrV & 0x03E0) >> 5;
 	if (yCoarse == 29)
 	{
-		yCoarse = 0;                        // coarse Y = 0
-		addrV ^= 0x0800;                    // switch vertical nametable
-	}
-	else// if (y == 31)
-	{
-		// Coarse Y can be set out of bounds and will wrap without adjusting the nametable
-		yCoarse = (yCoarse + 1) & 0x1F;
-	}
-	return (addrV & ~0x03E0) | (yCoarse << 5);
-#else
-
-	if ((addrV & 0x7000) != 0x7000)        // if fine Y < 7
-	{
-		 addrV += 0x1000;                      // increment fine Y
-	}
-	else
-	{
-		addrV &= ~0x7000;                     // fine Y = 0
-		int y = (addrV & 0x03E0) >> 5;        // let y = coarse Y
-		if (y == 29)
-		{
-			y = 0;                          //0 coarse Y = 0
-			addrV ^= 0x0800;                    // switch vertical nametable
-		}
-		else if (y == 31)
-		{
-			y = 0;                          // coarse Y = 0, nametable not switched
-		}
-		else
-		{
-			y += 1;                         // increment coarse Y
-		}
-		addrV = (addrV & ~0x03E0) | (y << 5);     // put coarse Y back into v
-	}
-	return addrV;
-#endif
-}
-
-void DrawScreenSimple(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
-{
-	{
-		s64 cFrame = CFrameFromTickp(tickpMin);
-		int cScanline, tickpScanline;
-		SplitTickpScanline(tickpMin, &cScanline, &tickpScanline);
-		printf("ds (%lld|%d:%d) ", cFrame, cScanline, tickpScanline);
+		addrV ^= 0x0800;                    // switch vertical nametable, yCoarse == 0
+		return (addrV & ~0x73E0);			// yCoarse == 0
 	}
 
-	TileLine * aTilLine = pPpu->m_aTilLine;
-	TileLine * aTilBackground = pPpu->m_aTilBackground;
-
-	static const int cScanlineVisible = 240;
-	static const int dTickpTileFetch = 8;
-
-	int cScanlineSprite = (pPpu->m_pctrl.m_fUse8x16Sprite) ? 16 : 8;
-	u8 * pBPatternLow = PBVram(pPpu, 0x0);
-	u8 * pBPatternHigh = PBVram(pPpu, 0x1000);
-	u8 * pBPatternSprite = (pPpu->m_pctrl.m_fHighSpritePatternTable) ? pBPatternHigh : pBPatternLow;
-
-	static const int s_cPalette = 4;
-	RGBA aRgbaBackground[8];
-	ZeroAB(aRgbaBackground, sizeof(aRgbaBackground));
-
-	int iXSprite = 8;
-	RGBA aRgbaBgPalette[s_cRgbaPalette * s_cPalette];
-	RGBA aRgbaSpritePalette[s_cRgbaPalette * s_cPalette];
-	for (int iRgb = 0; iRgb < FF_DIM(aRgbaBgPalette); ++iRgb)
-	{
-		// the first index in each palette is the shared background color
-		int iHwcol = ((iRgb & 0x3) == 0) ? 0 : iRgb;
-		aRgbaBgPalette[iRgb] = RgbaFromHwcol(HWCOL(pPpu->m_aBPalette[iHwcol]));
-
-		aRgbaSpritePalette[iRgb] = RgbaFromHwcol(HWCOL(pPpu->m_aBPalette[iHwcol + s_cPalette*s_cRgbaPalette]));
-	}
-
-	bool fShowBg = pPpu->m_pmask.m_fShowBg;
-	bool fShowSprites = pPpu->m_pmask.m_fShowSprites;
-
-	auto cFrameMax = CFrameFromTickp(tickpMax);
-
-	int cScanlineMin, cScanlineMax;
-	int tickpScanlineMin, tickpScanlineMax;
-	auto tickpCur = tickpMin;
-	while (tickpCur < tickpMax)
-	{
-		SplitTickpScanline(tickpCur, &cScanlineMin, &tickpScanlineMin);
-		auto cFrameCur = CFrameFromTickp(tickpCur);
-		if (cFrameCur < cFrameMax)
-		{
-			cScanlineMax = s_cScanlinesPerFrame;
-			tickpScanlineMax = s_dTickpPerScanline;
-			tickpCur = (cFrameCur+1) * s_dTickpPerFrame;
-		}
-		else
-		{
-			SplitTickpScanline(tickpMax, &cScanlineMax, &tickpScanlineMax);
-			tickpCur = tickpMax;
-		}
-
-		int tickpScanline = (tickpScanlineMin + 7) & ~7; //round up to the next 8 tickp boundary
-
-		//printf("%d..%d,", cScanlineMin, cScanlineMax);
-		auto pTexScreen = pPpu->m_pTexScreen;
-		for (int iScanline = cScanlineMin; iScanline <= cScanlineMax; ++iScanline)
-		{
-			int tickpLineMax = (iScanline == cScanlineMax) ? tickpScanlineMax : s_dTickpPerScanline;
-			if (iScanline < 240)
-			{
-				//visible scanlines
-				for ( ; tickpScanline <= tickpLineMax; tickpScanline += 8)
-				{	
-					if (tickpScanline < 258)
-					{
-						// Fetch background tile
-						if (fShowBg)
-						{
-							//int yTile = iScanline >> 3;		 // div 8
-							//int ySubtile = iScanline & 0x7;	 // mod 8
-							//int xTile = tickpScanline >> 3;	 // div 8
-							u16 addrV = pPpu->m_addrV;
-							int xTile = (addrV & 0x1F);
-							int yTile = (addrV & 0x3E0) >> 5; 
-							int ySubtile = (addrV & 0x7000) >> 12;
-							u16 nNametable = 0;//(addrV & 0xC00) >> 10;
-							//FF_ASSERT(ySubtile < 8 && xTile < 32 && yTile < 30, "bad offset");
-							if (xTile + 2 < FF_DIM(pPpu->m_aTilBackground))
-							{
-								FetchNametableTile(pPpu, 0x2000 | nNametable, xTile+2, yTile, ySubtile, &aTilBackground[xTile+2]);
-							}
-
-							RasterTileLineRgba(&aTilBackground[xTile], false, ySubtile, aRgbaBgPalette, aRgbaBackground);
-							auto addrVPrev = pPpu->m_addrV;
-							pPpu->m_addrV = AddrIncVramH(addrV);
-
-							if (iScanline == 0)
-								printf("<%04X/%04X->%04X>,", pPpu->m_addrTemp, pPpu->m_addrV, addrV);
-						}
-
-						int xTileSprite = tickpScanline >> 3;	 // div 8
-						u8 * pBScreen = &pTexScreen->m_pB[((xTileSprite*8) + iScanline * pTexScreen->m_dX) * 3];
-						int x = xTileSprite * 8;
-						for (int xSubtile=0; xSubtile < 8; ++xSubtile, ++x)
-						{
-							int iOam = 0;
-							RGBA rgbaSprite{0};
-							OAM * pOamMax = (fShowSprites) ? FF_PMAX(pPpu->m_aOamLine) : pPpu->m_aOamLine;
-
-							OAM * pOamRaster = nullptr;
-							for (OAM * pOam = pPpu->m_aOamLine; pOam != pOamMax; ++pOam, ++iOam)
-							{
-								int xSubsprite = x - pOam->m_xLeft;
-								if ((xSubsprite >= 0) && (xSubsprite < 8))
-								{
-									RGBA rgba = pPpu->m_aRgbaSpriteLine[iOam * 8 + xSubsprite];
-
-									if (rgba.m_a != 0)
-									{
-										rgbaSprite = rgba;
-										//fSpritePriority = pOam->m_fPriority;
-										pOamRaster = pOam;
-										break;
-									}
-								}
-							}
-
-							RGBA rgbaBackground = aRgbaBackground[xSubtile];
-							if (rgbaSprite.m_a != 0 && (!pOamRaster->m_fBgPriority || rgbaBackground.m_a == 0))
-							{
-								if (pOamRaster == &pPpu->m_aOamLine[pPpu->m_iOamSpriteZero])
-								{
-									pPpu->m_pstatus.m_fSpriteZeroHit = true;
-								}
-								*pBScreen++ = rgbaSprite.m_r;
-								*pBScreen++ = rgbaSprite.m_g;
-								*pBScreen++ = rgbaSprite.m_b;
-							}
-							else 
-							{
-								*pBScreen++ = rgbaBackground.m_r;
-								*pBScreen++ = rgbaBackground.m_g;
-								*pBScreen++ = rgbaBackground.m_b;
-							}
-						}
-					}
-					else if (tickpScanline == 264) // should start at 258, but we'll adjust
-					{
-						// should be tickpScanline 257
-						if (fShowBg)
-						{
-							//auto addrVPrev = pPpu->m_addrV;
-							pPpu->m_addrV = (pPpu->m_addrV & ~0x041F) | (pPpu->m_addrTemp & 0x041F);
-							int yCoarse = (pPpu->m_addrV & 0x03E0) >> 5;
-							FF_ASSERT(yCoarse < 30, "ack %d)%d:%d", cFrameCur, iScanline, tickpScanline);
-						}
-
-						// compute m_oamLine and fetch their tiles
-						int cOamLine = 0;
-						pPpu->m_iOamSpriteZero = -1;
-
-						RGBA * pRgbaSpriteLine = pPpu->m_aRgbaSpriteLine;
-						OAM * pOamMax = (fShowSprites) ? FF_PMAX(pPpu->m_aOam) : pPpu->m_aOam;
-						for (OAM * pOam = pPpu->m_aOam; pOam != pOamMax; ++pOam)
-						{
-							int ySubtile = (iScanline - pOam->m_yTop);
-							if  (ySubtile >= 0 && ySubtile < cScanlineSprite)
-							{
-								auto pTilSprite = &aTilLine[cOamLine];
-
-								// handle 8x16 tiles
-								int iTile = pOam->m_iTile;
-								u8 * pBPattern = pBPatternSprite;
-
-								if (cScanlineSprite == 16)
-								{
-									pBPattern = (iTile & 0x1) ? pBPatternHigh : pBPatternLow;
-									iTile = (iTile & 0xFE) + ((ySubtile >= 8) ? 1 : 0);
-								}
-								int dB = (ySubtile & 0x7) | (iTile << 4);
-								pTilSprite->m_bLow = pBPattern[dB];
-								pTilSprite->m_bHigh = pBPattern[dB | 0x8];
-								pTilSprite->m_iPalette = pOam->m_palette;
-
-								RasterTileLineRgba(pTilSprite, pOam->m_fFlipHoriz, ySubtile, aRgbaSpritePalette, pRgbaSpriteLine);
-								pRgbaSpriteLine += 8;
-
-								if (pOam == &pPpu->m_aOam[0])
-								{
-									pPpu->m_iOamSpriteZero = cOamLine;
-								}
-								pPpu->m_aOamLine[cOamLine++] = *pOam;
-
-								if (cOamLine >= 8)
-									break;
-							}
-						}
-						
-						while (cOamLine < FF_DIM(pPpu->m_aOamLine))
-						{
-							aTilLine[cOamLine] = TileLine{0, 0, 0};
-							OAM * pOam = &pPpu->m_aOamLine[cOamLine++];
-							pOam->m_yTop = 0xFF;
-							pOam->m_xLeft = 0;
-							pOam->m_iTile = 0xFF;
-
-							for (int iRgba = 0; iRgba < 8; ++iRgba)
-							{
-								*pRgbaSpriteLine++ = RGBA{0};
-							}
-						}
-					}
-					// BB - these are actually one tickp early because we're operating eight cycles at a time
-					else if ((tickpScanline == 320 || tickpScanline == 328) & fShowBg)
-					{
-						// fetch two background tiles for the next scanline
-						// BB - what's the base address here ACTUALLY supposed to be?
-						int iScanlineAdj = iScanline + 1;
-						int yTile = iScanlineAdj / 8;
-						int ySubtile = iScanlineAdj % 8;
-						FetchNametableTile(pPpu, 0x2000, 0, yTile, ySubtile, &aTilBackground[0]);
-						FetchNametableTile(pPpu, 0x2000, 1, yTile, ySubtile, &aTilBackground[1]);
-					}
-				}
-
-				if (fShowBg && tickpScanline >= s_dTickpPerScanline)
-				{
-					int yFine = (pPpu->m_addrV >> 12) & 0x7;
-					int yCoarse = (pPpu->m_addrV >> 5) & 0x1F;
-					int iScanlineExpected = yFine + yCoarse * 8;
-					FF_ASSERT(iScanlineExpected == iScanline, "scanline mismatch");
-					printf("y(%d),", iScanline);
-					pPpu->m_addrV = AddrIncVramV(pPpu->m_addrV);
-				}
-
-				tickpScanline = 0;
-			}
-			else if (iScanline < 260)
-			{
-				tickpScanline = 0;
-			}
-#if 0// - somehow we skip past the prerender scanline?? from 
-			else if (iScanline == 261 && !fShowBg) // pre-render
-			{
-				printf("{261 - noshow}");
-				// fSpriteZeroHit should be cleared on the first dot of the pre-render scanline
-				// ... is cleared in AdvancePpuTiming
-
-				static const int s_tickpAddrFlush = 304;
-				if (tickpScanline <= s_tickpAddrFlush &&  s_tickpAddrFlush < tickpLineMax )
-				{
-					//pPpu->m_pstatus.m_fSpriteZeroHit = false;
-
-					printf("NOTflush y addr t=$%04X  %lld)%d:%d\n",pPpu->m_addrTemp, cFrameCur, iScanline, tickpScanline);
-				}
-			}
-#endif
-			else if (iScanline == 261 && fShowBg) // pre-render
-			{
-				// fSpriteZeroHit should be cleared on the first dot of the pre-render scanline
-				// ... is cleared in AdvancePpuTiming
-				printf("{261  %d}", tickpScanline);
-
-//#why didn't this flush happen? didn't get to this scanline? fShowBg disabled?
-				static const int s_tickpAddrFlush = 304;
-				if (tickpScanline <= s_tickpAddrFlush &&  s_tickpAddrFlush < tickpLineMax )
-				{
-					//pPpu->m_pstatus.m_fSpriteZeroHit = false;
-
-					printf("flush y addr t=$%04X  %lld)%d:%d\n",pPpu->m_addrTemp, cFrameCur, iScanline, tickpScanline);
-					auto addrVPrev = pPpu->m_addrV;
-					pPpu->m_addrV = (pPpu->m_addrV & ~0x73E0) | (pPpu->m_addrTemp & 0x73E0);
-					int yCoarse = (pPpu->m_addrV & 0x03E0) >> 5;
-					if (yCoarse >= 30)
-					{
-						printf("");
-					}
-					tickpScanline = s_tickpAddrFlush;
-				}
-
-				static const int s_tickpPreFetch0 = 321;
-				static const int s_tickpPreFetch1 = 328;
-				if (tickpScanline <= s_tickpPreFetch0 &&  s_tickpPreFetch0 < tickpLineMax )
-				{
-					printf("nt0,");
-					FetchNametableTile(pPpu, 0x2000, 0, 0, 0, &aTilBackground[0]);
-					tickpScanline = s_tickpPreFetch0;
-				}
-
-				if (tickpScanline <= s_tickpPreFetch1 &&  s_tickpPreFetch1 < tickpLineMax )
-				{
-					printf("nt1,");
-					FetchNametableTile(pPpu, 0x2000, 1, 0, 0, &aTilBackground[1]);
-					tickpScanline = 0;
-				}
-				printf("\n");
-			}
-		}
-	}
+	// Coarse Y can be set out of bounds and will wrap without adjusting the nametable
+	yCoarse = (yCoarse + 1) & 0x1F;
+	return (addrV & ~0x73E0) | (yCoarse << 5);
 }
 
 inline static bool FIsInSpan(u64 i, u64 iMin, u64 iMax)
@@ -1035,7 +730,7 @@ inline static bool FIsInSpan(u64 i, u64 iMin, u64 iMax)
 	return (i >= iMin) && (i < iMax);
 }
 
-void DrawScreenNew(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
+void DrawScreen(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 {
 	static const int s_iColAddrFlush = 304;
 	static const int s_iColPreFetch0 = 321;
@@ -1065,7 +760,6 @@ void DrawScreenNew(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 	bool fShowSprites = pPpu->m_pmask.m_fShowSprites;
 
 	auto pTexScreen = pPpu->m_pTexScreen;
-	TileLine * aTilBackground = pPpu->m_aTilBackground;
 	TileLine * aTilLine = pPpu->m_aTilLine;
 
 	u64 tickpIt = tickpMin;
@@ -1109,21 +803,20 @@ void DrawScreenNew(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 						{
 							if (fShowBg)
 							{
-
 								int ySubtile = (pPpu->m_addrV & 0x7000) >> 12;
 								RasterShiftRgb(pPpu->m_nShiftBg, pPpu->m_nShiftBgAttrib, ySubtile, pPpu->m_dXScrollFine, aRgbaBgPalette, aRgbaBackground);
 
 								int xTile = (pPpu->m_addrV & 0x1F);
 								if (xTile < FF_DIM(pPpu->m_aTilBackground)) // BB - get rid of this check??
 								{
-									FetchNametableTile(pPpu, pPpu->m_addrV, aTilBackground);
+									FetchNametableTile(pPpu, pPpu->m_addrV);
 								}
 
 								auto addrVPrev = pPpu->m_addrV;
 								pPpu->m_addrV = AddrIncVramH(pPpu->m_addrV);
 							}
 
-							u8 * pBScreen = &pTexScreen->m_pB[(iColSprite + cScanline * pTexScreen->m_dX) * 3];
+							u8 * pBScreen = &pTexScreen->m_pB[((iColSprite-1) + cScanline * pTexScreen->m_dX) * 3];
 
 							for (int xSubtile=0; xSubtile < 8; ++xSubtile, ++iColSprite)
 							{
@@ -1149,12 +842,14 @@ void DrawScreenNew(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 
 								RGBA rgbaBackground = aRgbaBackground[xSubtile];
 								FF_ASSERT((pBScreen - pTexScreen->m_pB) < (pTexScreen->m_dX * pTexScreen->m_dY * 3), "bad screen write");
+
+								if (rgbaSprite.m_a != 0 && rgbaBackground.m_a != 0 && pOamRaster == &pPpu->m_aOamLine[pPpu->m_iOamSpriteZero])
+								{
+									pPpu->m_pstatus.m_fSpriteZeroHit = true;
+								}
+
 								if (rgbaSprite.m_a != 0 && (!pOamRaster->m_fBgPriority || rgbaBackground.m_a == 0))
 								{
-									if (pOamRaster == &pPpu->m_aOamLine[pPpu->m_iOamSpriteZero])
-									{
-										pPpu->m_pstatus.m_fSpriteZeroHit = true;
-									}
 									*pBScreen++ = rgbaSprite.m_r;
 									*pBScreen++ = rgbaSprite.m_g;
 									*pBScreen++ = rgbaSprite.m_b;
@@ -1181,23 +876,12 @@ void DrawScreenNew(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 						}
 					}
 
-					/* We should be incrementing V here, but col 256 is inside the standard +8 raster  loop
-					if (FIsInSpan(tickpBase + s_iColAddrIncV, tickpIt, tickpVisibleScanlineMax))
-					{
-						pPpu->m_addrV = AddrIncVramV(pPpu->m_addrV);
-						++tickpIt;
-					}
-					*/
 					if (FIsInSpan(tickpBase + s_iColAddrResetH, tickpIt, tickpVisibleScanlineMax))
 					{
-						static int s_iScanlineBreak = 100;
- 						if (cScanline == s_iScanlineBreak)
-						{
-							printf("");
-						}
-
 						if (fShowBg)
 						{
+							// IncV should happen one column earlier, but that's inside the +8 raster loop
+							//  we can fix it if it's a problem
 							pPpu->m_addrV = AddrIncVramV(pPpu->m_addrV);
 							pPpu->m_addrV = (pPpu->m_addrV & ~0x041F) | (pPpu->m_addrTemp & 0x041F);
 						}
@@ -1223,17 +907,18 @@ void DrawScreenNew(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 								int iTile = pOam->m_iTile;
 								u8 * pBPattern = pBPatternSprite;
 
+								int ySubtileFlip = (pOam->m_fFlipVert) ? (cScanlineSprite-1-ySubtile) : ySubtile;
 								if (cScanlineSprite == 16)
 								{
 									pBPattern = (iTile & 0x1) ? pBPatternHigh : pBPatternLow;
-									iTile = (iTile & 0xFE) + ((ySubtile >= 8) ? 1 : 0);
+									iTile = (iTile & 0xFE) + ((ySubtileFlip >= 8) ? 1 : 0);
 								}
-								int dB = (ySubtile & 0x7) | (iTile << 4);
+								int dB = (ySubtileFlip & 0x7) | (iTile << 4);
 								pTilSprite->m_bLow = pBPattern[dB];
 								pTilSprite->m_bHigh = pBPattern[dB | 0x8];
 								pTilSprite->m_iPalette = pOam->m_palette;
 
-								RasterTileLineRgba(pTilSprite, pOam->m_fFlipHoriz, ySubtile, aRgbaSpritePalette, pRgbaSpriteLine);
+								RasterTileLineRgba(pTilSprite, pOam->m_fFlipHoriz, aRgbaSpritePalette, pRgbaSpriteLine);
 								pRgbaSpriteLine += 8;
 
 								if (pOam == &pPpu->m_aOam[0])
@@ -1262,13 +947,13 @@ void DrawScreenNew(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 
 					if (fShowBg && FIsInSpan(tickpBase + s_iColPreFetch0, tickpIt, tickpVisibleScanlineMax))
 					{
-						FetchNametableTile(pPpu, pPpu->m_addrV, aTilBackground);
+						FetchNametableTile(pPpu, pPpu->m_addrV);
 						pPpu->m_addrV = AddrIncVramH(pPpu->m_addrV);
 					}
 
 					if (fShowBg && FIsInSpan(tickpBase + s_iColPreFetch0, tickpIt, tickpVisibleScanlineMax))
 					{
-						FetchNametableTile(pPpu, pPpu->m_addrV, aTilBackground);
+						FetchNametableTile(pPpu, pPpu->m_addrV);
 						pPpu->m_addrV = AddrIncVramH(pPpu->m_addrV);
 					}
 
@@ -1304,13 +989,13 @@ void DrawScreenNew(Ppu * pPpu, u64 tickpMin, u64 tickpMax)
 
 				if (fShowBg && FIsInSpan(tickpBase + s_iColPreFetch0, tickpIt, tickpPrerenderEnd))
 				{
-					FetchNametableTile(pPpu, pPpu->m_addrV, aTilBackground);
+					FetchNametableTile(pPpu, pPpu->m_addrV);
 					pPpu->m_addrV = AddrIncVramH(pPpu->m_addrV);
 				}
 
 				if (fShowBg && FIsInSpan(tickpBase + s_iColPreFetch1, tickpIt, tickpPrerenderEnd))
 				{
-					FetchNametableTile(pPpu, pPpu->m_addrV, aTilBackground);
+					FetchNametableTile(pPpu, pPpu->m_addrV);
 					pPpu->m_addrV = AddrIncVramH(pPpu->m_addrV);
 				}
 				tickpIt = tickpPrerenderEnd;
