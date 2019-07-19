@@ -38,10 +38,8 @@ int main(int cpChzArg, const char * apChzArg[])
 		}
 
 		u16 addrStartup = U16PeekMem(&g_fam.m_memmp, kAddrReset);
-		printf("loaded '%s'   reset vector = %x\n", apChzArg[1], addrStartup);
-
+		printf("loaded '%s'   reset vector = 0x%04x\n", apChzArg[1], addrStartup);
 	}
-
 
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO();

@@ -53,6 +53,11 @@ void ZeroAB(void * pDest, size_t cB)
 	memset(pDest, 0, cB);
 }
 
+void FillAB(u8 b, void * pDest, size_t cB)
+{
+	memset(pDest, b, cB);
+}
+
 void CopyAB(const void * pSource, void * pDest, size_t cB)
 {
 	memcpy(pDest, pSource, cB);

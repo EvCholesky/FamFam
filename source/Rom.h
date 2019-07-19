@@ -55,7 +55,7 @@ struct RomHeader	// tag = head
 {
 	u32				m_nCookie;			// should be "NES" followed by EOL
 	u8				m_cPagePrgRom;		// number of 16KiB pages of program data
-	u8				m_cPageChrRom;		// number of 8KiB pages of char data
+	u8				m_cPageChrRom;		// number of 8KiB pages of chr data
 	RomFlags		m_romf;
 
 	RomFlagsEx		m_romfx;
@@ -64,6 +64,30 @@ struct RomHeader	// tag = head
 	u8				m_miscRoms;	
 	u8				m_expansionDevice;
 };
+
+enum MAPREG1
+{
+	MAPREG1_Control,	
+	MAPREG1_ChrPage0,	
+	MAPREG1_ChrPage1,	
+	MAPREG1_PrgPage,	
+	MAPREG1_Max
+};
+
+struct MapperMMC1 // tag = mapr1
+{
+			MapperMMC1();
+
+	u8		m_cBitShift;				// how many bits have been shifted in via writes to 0x8000..0xFFFFF
+	u8		m_bShift;				// how many bits have been shifted in via writes to 0x8000..0xFFFFF
+	u8		m_aBReg[MAPREG1_Max];
+	u8		m_aBRegPrev[MAPREG1_Max];
+	u8		m_iMemcbWriteMem;
+};
+
+void UpdateBanks(Famicom * pFam, MapperMMC1 * pMapr1);
+
+
 
 struct Cart
 {
@@ -81,7 +105,8 @@ struct Cart
 
 	MAPPERK			m_mapperk;
 	RomHeader *		m_pHead;
-	DynAry<u16>		m_aryAddrInstruct;	// cached starting instructions for each instruction (for disasembly window)
+	DynAry<u16>		m_aryAddrInstruct;	// cached starting address for each instruction (for disasembly window)
+										// (one entry per debugger line - to allow clipping the offscreen instructions)
 
 	u8 *			m_pBPrgRom;
 	u8 *			m_pBChrRom;

@@ -13,6 +13,14 @@ Famicom g_fam;
 static const char s_chWildcard = '?';
 bool s_fTraceCpu = false;
 
+
+
+inline MapperMMC1 * PMapr1(Famicom * pFam)
+{
+	FF_ASSERT(pFam->m_pCart->m_mapperk == MAPPERK_MMC1, "casting to wrong mapper type");
+	return (MapperMMC1 *)pFam->m_pVMapr;
+}
+
 const AddrModeInfo * PAmodinfoFromAmod(AMOD amod)
 {
 #define INFO(AM, DESC) { AMOD_##AM, DESC },
@@ -296,6 +304,46 @@ void WriteControllerLatch(Famicom * pFam, u16 addr, u8 b)
 	pMemmp->m_bPrevBusPpu = b;
 }
 
+void WriteMemMmc1(Famicom * pFam, u16 addr, u8 b)
+{
+	if (addr > 0x8000)
+	{
+		auto pMapr1 = PMapr1(pFam);
+		if (b & 0x80)
+		{
+			// clear the shift register
+			pMapr1->m_cBitShift = 0;
+			pMapr1->m_bShift = 0;
+		}
+		else
+		{
+			// shift bit 0 into the register
+			++pMapr1->m_cBitShift;
+			pMapr1->m_bShift = ((b & 0x1) << 4) | (pMapr1->m_bShift >> 1);
+
+			if (pMapr1->m_cBitShift > 4)
+			{
+				int iBReg = (addr >> 13) & 0x3; // register selected by bits 13..14 of the address for the fifth write
+				pMapr1->m_aBReg[iBReg] = pMapr1->m_bShift;
+				pMapr1->m_cBitShift = 0;
+				pMapr1->m_bShift = 0;
+
+				UpdateBanks(pFam, pMapr1);
+			}
+		}
+	}
+
+	// basic write mem inlined without the callback checks
+	auto pMemmp = &pFam->m_memmp;
+	const MemoryDescriptor & memdesc = pMemmp->m_mpAddrMemdesc[addr];
+	pMemmp->m_bPrevBus = b;
+
+	u8 bDummy;
+	u8 * pB = ((memdesc.m_fmem & FMEM_ReadOnly) == 0) ? pMemmp->m_mpAddrPB[addr] : &bDummy;
+	*pB = b;
+	TickCpu(pFam);
+}
+
 u8 U8PeekMem(MemoryMap * pMemmp, u16 addr)
 {
 	// NOTE: peek memory will not call memory callback routines
@@ -405,7 +453,7 @@ void VerifyMirror(MemoryMap * pMemmp, u32 addrBaseMin, u32 addrBaseMax, u32 addr
 	}
 }
 
-AddressSpan AddrspMapMemory(MemoryMap * pMemmp, u32 addrMin, u32 addrMax, const MemoryDescriptor * aMemdesc, int cMemdesc)
+AddressSpan AddrspMapMemory(MemoryMap * pMemmp, u32 addrMin, u32 addrMax, MemoryDescriptor * aMemdesc, int cMemdesc)
 {
 	VerifyMemorySpanClear(pMemmp, addrMin, addrMax);
 	FF_ASSERT(addrMax > addrMin, "bad min/max addresses");
@@ -414,8 +462,19 @@ AddressSpan AddrspMapMemory(MemoryMap * pMemmp, u32 addrMin, u32 addrMax, const 
 	MemoryDescriptor memdesc;
 	if (cMemdesc == 0)
 	{
+		FF_ASSERT(aMemdesc == nullptr, "cMemdesc is zero, but passed in an array of descriptors");
 		cMemdesc = 1;
 		aMemdesc = &memdesc;
+	}
+
+	{
+		auto pMemdescMax = &aMemdesc[cMemdesc];
+		for (auto pMemdescIt = aMemdesc; pMemdescIt != pMemdescMax; ++pMemdescIt)
+		{
+			auto pMemcb = &pMemmp->m_aryMemcb[pMemdescIt->m_iMemcb];
+			pMemdescIt->m_fmem |=	((pMemcb->m_pFnReadmem) ? FMEM_HasReadCb : 0) |
+									((pMemcb->m_pFnWritemem) ? FMEM_HasWriteCb : 0);
+		}
 	}
 
 	int iMemdesc = 0;
@@ -467,6 +526,22 @@ AddressSpan AddrspMarkUnmapped(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
 	return addrsp;
 }
 
+void UnmapMemory(MemoryMap * pMemmp, u32 addrMin, u32 addrMax)
+{
+	u8 ** ppBMax = &pMemmp->m_mpAddrPB[addrMax];
+	for (auto ppB = &pMemmp->m_mpAddrPB[addrMin]; ppB != ppBMax; ++ppB)
+	{
+		*ppB = nullptr;
+	}
+
+	// NOTE: This function may be passed empty spans where addrdMin == addrMax
+	auto pMemdescMax = &pMemmp->m_mpAddrMemdesc[addrMax];
+	for (auto pMemdescIt = &pMemmp->m_mpAddrMemdesc[addrMin]; pMemdescIt != pMemdescMax; ++pMemdescIt)
+	{
+		*pMemdescIt = MemoryDescriptor();
+	}
+}
+
 void MapMirrored(MemoryMap * pMemmp, AddressSpan addrspBase, u32 addrMin, u32 addrMax, const MemoryDescriptor * aMemdesc, int cMemdesc)
 {
 	MemoryDescriptor memdesc;
@@ -507,11 +582,19 @@ void TestMemoryMap(MemoryMap * pMemmp)
 	// make sure all spans are mapped or unmapped
 	for (u32 addr = 0; addr < kCBAddressable; ++addr)
 	{
-		u8 fmem = pMemmp->m_mpAddrMemdesc[addr].m_fmem;
+		auto pMemdesc = &pMemmp->m_mpAddrMemdesc[addr];
+		u8 fmem = pMemdesc->m_fmem;
 		FF_ASSERT(fmem != 0, "unhandled region at %04x. unmapped memory regions must be configured.", addr);
 		if ((fmem & FMEM_Mapped) == 0)
 		{
 			FF_ASSERT(pMemmp->m_mpAddrPB[addr] = &pMemmp->m_bPrevBus, "unmapped memory should point at the previous bus value");
+		}
+
+		if (pMemdesc->m_iMemcb)
+		{
+			auto pMemcb = &pMemmp->m_aryMemcb[pMemdesc->m_iMemcb];
+			FF_ASSERT((pMemcb->m_pFnReadmem==nullptr) == ((pMemdesc->m_fmem & FMEM_HasReadCb) != 0), "missing read cb flag");
+			FF_ASSERT((pMemcb->m_pFnWritemem==nullptr) == ((pMemdesc->m_fmem & FMEM_HasWriteCb) != 0), "missing write cb flag");
 		}
 	}
 

@@ -296,7 +296,8 @@ struct Ppu
 };
 
 void StaticInitPpu(Ppu * pPpu, Platform * pPlat);
-void InitPpuMemoryMap(Ppu * pPpu, u8 * pBChr, int cBChr, NTMIR ntmir);
+void InitPpuMemoryMap(Ppu * pPpu, size_t cBChr, NTMIR ntmir);
+void InitChrMemory(Ppu * pPpu, u16 addrVram, u8 * pBChr, size_t cBChr);
 void DrawChrMemory(Ppu * pPpu, Texture * pTex, bool fUse8x16);
 void DrawNameTableMemory(Ppu * pPpu, Texture * pTex);
 

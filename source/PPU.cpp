@@ -145,7 +145,8 @@ void UpdatePpu(Famicom * pFam, const PpuTiming & ptimEnd)
 		{
 			if (pPpucmd->m_pcmdk == PCMDK_Read)
 			{
-				switch (pPpucmd->m_addr)
+				u16 addr = 0x2000 | (pPpucmd->m_addr & 0x7); //	mirrors every 8 registers
+				switch (addr)
 				{
 					case PPUREG_Status:
 					{
@@ -387,10 +388,14 @@ void StaticInitPpu(Ppu * pPpu, Platform * pPlat)
 	}
 }
 
-void InitPpuMemoryMap(Ppu * pPpu, u8 * pBChr, int cBChr, NTMIR ntmir)
+void InitChrMemory(Ppu * pPpu, u16 addrVram, u8 * pBChr, size_t cBChr)
+{
+	CopyAB(pBChr, &pPpu->m_aBChr[addrVram], cBChr);
+}
+
+void InitPpuMemoryMap(Ppu * pPpu, size_t cBChr, NTMIR ntmir)
 {
 	ZeroAB(pPpu->m_aPVramMap, FF_DIM(pPpu->m_aPVramMap));
-	CopyAB(pBChr, pPpu->m_aBChr, cBChr);
 
 	FF_ASSERT(cBChr == FF_KIB(8), "expected 8k, need to handle odd size");
 	MapPpuMemorySpan(pPpu, 0, pPpu->m_aBChr, cBChr);

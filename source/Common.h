@@ -303,6 +303,7 @@ template <typename T> void Destruct(T * p)									{ SDestructSelector<T, SHasTr
 template <typename T> void DestructN(T * p, size_t c)						{ SDestructSelector<T, SHasTrivialDestructor<T>::V >::DestructN(p,c); }
 
 void ZeroAB(void * pDest, size_t cB);
+void FillAB(u8 b, void * pDest, size_t cB);
 void CopyAB(const void * pSource, void * pDest, size_t cB);
 
 // find index of element pointed to by 'pT' inside array 'aT' 

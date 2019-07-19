@@ -112,6 +112,8 @@ enum FMEM : u8
 	FMEM_ReadOnly		= 0x2,
 	FMEM_BreakOnRead	= 0x4,
 	FMEM_BreakOnWrite	= 0x8,
+	FMEM_HasReadCb		= 0x10,
+	FMEM_HasWriteCb		= 0x20,
 };
 
 struct MemoryDescriptor //  tag = memdesc
@@ -158,8 +160,9 @@ struct MemoryMap // tag = memmp
 	u8							m_bPrevBusPpu;
 };
 
-AddressSpan AddrspMapMemory(MemoryMap * pMemmp, u32 addrMin, u32 addrMax, const MemoryDescriptor * pMemdesc = nullptr, int cMemdesc = 0);
+AddressSpan AddrspMapMemory(MemoryMap * pMemmp, u32 addrMin, u32 addrMax, MemoryDescriptor * pMemdesc = nullptr, int cMemdesc = 0);
 AddressSpan AddrspMarkUnmapped(MemoryMap * pMemmp, u32 addrMin, u32 addrMax);
+void UnmapMemory(MemoryMap * pMemmp, u32 addrMin, u32 addrMax);
 void MapMirrored(MemoryMap * pMemmp, AddressSpan addrspBase, u32 addrMin, u32 addrMax, const MemoryDescriptor * aMemdec = nullptr, int cMemdesc = 0);
 u8 IMemcbAllocate(MemoryMap * pMemmp, PFnReadMemCallback pFnRead, PFnWriteMemCallback pFnWrite); 
 
@@ -183,7 +186,7 @@ void WriteOpenBus(Famicom * pFam, u16 addr, u8 b);
 void WritePpuReg(Famicom * pFam, u16 addr, u8 b);
 void WriteOamDmaRegister(Famicom * pFam, u16 addr, u8 b);
 void WriteControllerLatch(Famicom * pFam, u16 addr, u8 b);
-
+void WriteMemMmc1(Famicom * pFam, u16 addr, u8 b);
 
 enum MODELK
 {
@@ -249,6 +252,7 @@ struct Famicom // tag = fam
 					,m_pKeyps(nullptr)
 					,m_famin()
 					,m_pCart(nullptr)
+					,m_pVMapr(nullptr)
 						{ ; }
 
 	Cpu  			m_cpu;
@@ -265,6 +269,7 @@ struct Famicom // tag = fam
 	KeyPressState * m_pKeyps;
 	FamicomInput 	m_famin;
 	Cart *			m_pCart;
+	void *			m_pVMapr;		// mapper registers - typed by mapperk
 	MemoryMap 		m_memmp;
 };
 
@@ -279,7 +284,7 @@ inline u8 U8ReadMem(Famicom * pFam, u16 addr)
 {
 	auto pMemmp = &pFam->m_memmp;
 	const MemoryDescriptor & memdesc = pMemmp->m_mpAddrMemdesc[addr];
-	if (memdesc.m_iMemcb)
+	if (((memdesc.m_fmem & FMEM_HasReadCb) != 0) & (memdesc.m_iMemcb != 0))
 	{
 		TickCpu(pFam);
 		return (*pMemmp->m_aryMemcb[memdesc.m_iMemcb].m_pFnReadmem)(pFam, addr);
@@ -309,7 +314,7 @@ inline void WriteMemU8(Famicom * pFam, u16 addr, u8 b)
 {
 	auto pMemmp = &pFam->m_memmp;
 	const MemoryDescriptor & memdesc = pMemmp->m_mpAddrMemdesc[addr];
-	if (memdesc.m_iMemcb)
+	if (((memdesc.m_fmem & FMEM_HasWriteCb) != 0) & (memdesc.m_iMemcb != 0))
 	{
 		(*pMemmp->m_aryMemcb[memdesc.m_iMemcb].m_pFnWritemem)(pFam, addr, b);
 		TickCpu(pFam);
