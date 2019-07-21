@@ -559,5 +559,15 @@ void UpdateScreenWindow(Debugger * pDebug, Platform * pPlat, Famicom * pFam)
 
 	ImGui::Image((void*)(intptr_t)pPpu->m_pTexScreen->m_nId, ImVec2(512, 512));
 
+	static float s_dXTimer = 75.0f;
+	float x = 25.0f;
+	for (int tval = 0; tval < TVAL_Max; ++tval)
+	{
+		ImGui::SetCursorPosX(x); 
+		ImGui::Text("%-3.2f", DMsecFrame(pPlat, TVAL(tval)));
+		ImGui::SameLine();
+		x += s_dXTimer;
+	}
+
     ImGui::End();
 }

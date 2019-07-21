@@ -186,7 +186,7 @@ void WriteOpenBus(Famicom * pFam, u16 addr, u8 b);
 void WritePpuReg(Famicom * pFam, u16 addr, u8 b);
 void WriteOamDmaRegister(Famicom * pFam, u16 addr, u8 b);
 void WriteControllerLatch(Famicom * pFam, u16 addr, u8 b);
-void WriteMemMmc1(Famicom * pFam, u16 addr, u8 b);
+void WriteRomMmc1(Famicom * pFam, u16 addr, u8 b);
 
 enum MODELK
 {

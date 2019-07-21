@@ -47,6 +47,56 @@ FF_FORCE_INLINE f32 DTElapsed(s64 cTickStart, s64 cTickEnd, float rTickToSecond)
     return f32(cTickEnd - cTickStart) * rTickToSecond;
 }
 
+void ClearTimers(Platform * pPlat)
+{
+	ZeroAB(pPlat->m_mpTvalCTickStart, sizeof(pPlat->m_mpTvalCTickStart));
+	ZeroAB(pPlat->m_mpTvalCTick, sizeof(pPlat->m_mpTvalCTick));
+	ZeroAB(pPlat->m_mpTvalDTFrame, sizeof(pPlat->m_mpTvalDTFrame));
+}
+
+void StartTimer(TVAL tval)
+{
+	auto pPlat = &g_plat;
+	FF_ASSERT(pPlat->m_mpTvalCTickStart[tval] == 0, "EndTimer was not called");	
+	pPlat->m_mpTvalCTickStart[tval] =  CTickWallClock();
+}
+
+void EndTimer(TVAL tval)
+{
+	auto pPlat = &g_plat;
+	auto cTickNow = CTickWallClock();
+	auto pCTickStart = & pPlat->m_mpTvalCTickStart[tval];
+	FF_ASSERT(*pCTickStart != 0, "StartTimer was not called");	
+
+	pPlat->m_mpTvalCTick[tval] += cTickNow - *pCTickStart;
+	*pCTickStart = 0;
+}
+
+f32 DTFrame(Platform * pPlat, TVAL tval)
+{
+	return pPlat->m_mpTvalDTFrame[tval];
+}
+
+f32 DMsecFrame(Platform * pPlat, TVAL tval)
+{
+	return pPlat->m_mpTvalDTFrame[tval] * 1000.0f;
+}
+
+void FrameEndTimers(Platform * pPlat)
+{
+	f32 rTickToSecond = pPlat->m_pltime.m_rTickToSecond;
+	for (int tval = 0; tval < TVAL_Max; ++tval)
+	{
+		if (!FF_FVERIFY(pPlat->m_mpTvalCTickStart[tval] == 0, "EndTimer was not called before frame end"))
+		{
+			EndTimer(TVAL(tval));
+		}
+
+		pPlat->m_mpTvalDTFrame[tval] = f32(pPlat->m_mpTvalCTick[tval]) * rTickToSecond;
+		pPlat->m_mpTvalCTick[tval] = 0;
+	}
+}
+
 void WaitUntilFrameEnd(PlatformTime * pPltime, s64 cTickStart)
 {
 	auto cTickEnd = CTickWallClock();
@@ -371,6 +421,12 @@ void SetupDefaultInputMapping(Famicom * pFam)
 	pGpad0->m_mpButkKeycode1[BUTK_Down] = KEYCODE_JoypadAxisPos1;
 	pGpad0->m_mpButkKeycode1[BUTK_Left] = KEYCODE_JoypadAxisNeg0;
 	pGpad0->m_mpButkKeycode1[BUTK_Right] = KEYCODE_JoypadAxisPos0;
+}
+
+Platform::Platform()
+:m_pGlfwin(nullptr)
+{
+	ClearTimers(this); 
 }
 
 bool FTryInitPlatform(Platform * pPlat, int nHzTarget)

@@ -157,6 +157,18 @@ struct PlatformTime // tag = pltime
 	bool		m_fHasMsSleep;
 };
 
+enum TVAL // Timer record 
+{
+	TVAL_FamicomUpdate,
+	TVAL_DebuggerUpdate,
+	TVAL_ImguiRender,
+	TVAL_TotalFrame,
+
+	TVAL_Max,
+	TVAL_Min = 0,
+	TVAL_Nil = -1,
+};
+
 enum JCONS // Joystick CONnection State
 {
 	JCONS_Disconnected,
@@ -193,12 +205,13 @@ struct PlatformJoystick // tag = pljoy
 static const int s_cJoystickMax = 16;
 struct Platform // tag = plat
 {
-						Platform()
-						:m_pGlfwin(nullptr)
-							{ ; }
+						Platform();
 	
 	GLFWwindow *		m_pGlfwin;
 	PlatformTime		m_pltime;
+	s64					m_mpTvalCTickStart[TVAL_Max];	// when was StartTimer called for a given TVAL
+	s64					m_mpTvalCTick[TVAL_Max];	// total ticks this frame
+	float				m_mpTvalDTFrame[TVAL_Max];		// last frame's timings - used for reporting
 
 	PlatformJoystick	m_aPljoy[s_cJoystickMax];
 };
@@ -222,6 +235,13 @@ void ClearScreen(Platform * pPlat);
 
 void SwapBuffers(Platform * pPlat);
 void PollInput(Platform * pPlat, Famicom * pFam);
+
+void StartTimer(TVAL tval);
+void EndTimer(TVAL tval);
+f32 DTFrame(Platform * pPlat, TVAL tval);
+f32 DMsecFrame(Platform * pPlat, TVAL tval);
+void FrameEndTimers(Platform * pPlat);
+void ClearTimers(Platform * pPlat);
 
 struct Texture
 {

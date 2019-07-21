@@ -304,7 +304,7 @@ void WriteControllerLatch(Famicom * pFam, u16 addr, u8 b)
 	pMemmp->m_bPrevBusPpu = b;
 }
 
-void WriteMemMmc1(Famicom * pFam, u16 addr, u8 b)
+void WriteRomMmc1(Famicom * pFam, u16 addr, u8 b)
 {
 	if (addr > 0x8000)
 	{
@@ -325,6 +325,7 @@ void WriteMemMmc1(Famicom * pFam, u16 addr, u8 b)
 			{
 				int iBReg = (addr >> 13) & 0x3; // register selected by bits 13..14 of the address for the fifth write
 				pMapr1->m_aBReg[iBReg] = pMapr1->m_bShift;
+				((u8*)&pMapr1->m_nReg)[iBReg] = pMapr1->m_bShift;
 				pMapr1->m_cBitShift = 0;
 				pMapr1->m_bShift = 0;
 
@@ -338,9 +339,6 @@ void WriteMemMmc1(Famicom * pFam, u16 addr, u8 b)
 	const MemoryDescriptor & memdesc = pMemmp->m_mpAddrMemdesc[addr];
 	pMemmp->m_bPrevBus = b;
 
-	u8 bDummy;
-	u8 * pB = ((memdesc.m_fmem & FMEM_ReadOnly) == 0) ? pMemmp->m_mpAddrPB[addr] : &bDummy;
-	*pB = b;
 	TickCpu(pFam);
 }
 

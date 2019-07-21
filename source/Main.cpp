@@ -59,6 +59,7 @@ int main(int cpChzArg, const char * apChzArg[])
 	bool fShowImguiDemoWindow = true;
 	while (!FShouldWindowClose(&g_plat))
 	{
+		StartTimer(TVAL_TotalFrame);
 		ClearScreen(&g_plat);
 
          // Feed inputs to dear imgui, start new frame
@@ -71,21 +72,30 @@ int main(int cpChzArg, const char * apChzArg[])
             ImGui::ShowDemoWindow(&fShowImguiDemoWindow);
 		}
 
+		StartTimer(TVAL_FamicomUpdate);
 		ExecuteFamicomFrame(&g_fam);
+		EndTimer(TVAL_FamicomUpdate);
 
+		StartTimer(TVAL_DebuggerUpdate);
 		UpdateDebugger(&debug, &g_plat, &g_fam);
+		EndTimer(TVAL_DebuggerUpdate);
 
 		UpdateScreenWindow(&debug, &g_plat, &g_fam);
 
 		// Render dear imgui into screen
 
+		StartTimer(TVAL_ImguiRender);
 		ImGui::Render();
         ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
+		EndTimer(TVAL_ImguiRender);
+
 
 		SwapBuffers(&g_plat);
 		PollInput(&g_plat, &g_fam);
+		EndTimer(TVAL_TotalFrame);
 
 		WaitUntilFrameEnd(&g_plat.m_pltime, cTickLast);
+		FrameEndTimers(&g_plat);
 		cTickLast = CTickWallClock();
 	}
 
