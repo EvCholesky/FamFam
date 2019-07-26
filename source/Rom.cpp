@@ -198,6 +198,7 @@ void UpdateBanks(Famicom * pFam, MapperMMC1 * pMapr1)
 	static const u32 s_nMaskRam = 0x1F00000F;
 	static const u32 s_nMaskPrg = 0x1F00000C;
 	static const u32 s_nMaskChr = 0x001F1F10;
+	static const u32 s_nMaskMirror = 0x00000003;
 
 	u32 nTest = s_nMaskRam;
 	u8 * pBTest = (u8*)&nTest;
@@ -211,11 +212,26 @@ void UpdateBanks(Famicom * pFam, MapperMMC1 * pMapr1)
 	if ((pMapr1->m_nReg & nMask) == (pMapr1->m_nRegPrev & nMask)) 
 		return;
 
+	bool fHasMirrorChanged =(pMapr1->m_nReg & s_nMaskMirror) != (pMapr1->m_nRegPrev & s_nMaskMirror);
 	bool fHasPrgChanged = (pMapr1->m_nReg & s_nMaskPrg) != (pMapr1->m_nRegPrev & s_nMaskPrg);
 	bool fHasChrChanged = (pMapr1->m_nReg & s_nMaskChr) != (pMapr1->m_nRegPrev & s_nMaskChr);
 	pMapr1->m_nRegPrev = pMapr1->m_nReg;
 
 	u8 * aBReg = pMapr1->m_aBReg;
+	if (fHasMirrorChanged)
+	{
+		NTMIR ntmir;
+		switch (pMapr1->m_nReg & 0x3)
+		{
+		case 0: ntmir = NTMIR_OneScreenLow; break; 
+		case 1: ntmir = NTMIR_OneScreenHigh; break; 
+		case 2: ntmir = NTMIR_Vertical; break; 
+		case 3: ntmir = NTMIR_Horizontal; break; 
+		}
+
+		SetNametableMapping(&pFam->m_ppu, ntmir);
+	}
+
 	if (fHasPrgChanged)
 	{
 		auto pMemmp = &pFam->m_memmp;

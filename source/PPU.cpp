@@ -393,13 +393,8 @@ void InitChrMemory(Ppu * pPpu, u16 addrVram, u8 * pBChr, size_t cBChr)
 	CopyAB(pBChr, &pPpu->m_aBChr[addrVram], cBChr);
 }
 
-void InitPpuMemoryMap(Ppu * pPpu, size_t cBChr, NTMIR ntmir)
+void SetNametableMapping(Ppu * pPpu, NTMIR ntmir)
 {
-	ZeroAB(pPpu->m_aPVramMap, FF_DIM(pPpu->m_aPVramMap));
-
-	FF_ASSERT(cBChr == FF_KIB(8), "expected 8k, need to handle odd size");
-	MapPpuMemorySpan(pPpu, 0, pPpu->m_aBChr, cBChr);
-
 	static const int s_cBNameTable = FF_KIB(1);
 	u8 * pBNameTable0 = &pPpu->m_aBCieram[0];
 	u8 * pBNameTable1 = &pPpu->m_aBCieram[s_cBNameTable];
@@ -418,11 +413,17 @@ void InitPpuMemoryMap(Ppu * pPpu, size_t cBChr, NTMIR ntmir)
 		MapPpuMemorySpan(pPpu, 0x2800, pBNameTable1, s_cBNameTable);
 		MapPpuMemorySpan(pPpu, 0x2C00, pBNameTable1, s_cBNameTable);
 		break;
-	case NTMIR_OneScreen:
+	case NTMIR_OneScreenLow:
 		MapPpuMemorySpan(pPpu, 0x2000, pBNameTable0, s_cBNameTable);
 		MapPpuMemorySpan(pPpu, 0x2400, pBNameTable0, s_cBNameTable);
 		MapPpuMemorySpan(pPpu, 0x2800, pBNameTable0, s_cBNameTable);
 		MapPpuMemorySpan(pPpu, 0x2C00, pBNameTable0, s_cBNameTable);
+		break;
+	case NTMIR_OneScreenHigh:
+		MapPpuMemorySpan(pPpu, 0x2000, pBNameTable1, s_cBNameTable);
+		MapPpuMemorySpan(pPpu, 0x2400, pBNameTable1, s_cBNameTable);
+		MapPpuMemorySpan(pPpu, 0x2800, pBNameTable1, s_cBNameTable);
+		MapPpuMemorySpan(pPpu, 0x2C00, pBNameTable1, s_cBNameTable);
 		break;
 	case NTMIR_FourScreen:
 		{
@@ -440,6 +441,18 @@ void InitPpuMemoryMap(Ppu * pPpu, size_t cBChr, NTMIR ntmir)
 	MapPpuMemorySpan(pPpu, 0x3400, PBVram(pPpu, PADDR_NameTable1), s_cBNameTable);
 	MapPpuMemorySpan(pPpu, 0x3800, PBVram(pPpu, PADDR_NameTable2), s_cBNameTable);
 	MapPpuMemorySpan(pPpu, 0x3C00, PBVram(pPpu, PADDR_NameTable3), 0x3F00 - 0x3C00);
+}
+
+void InitPpuMemoryMap(Ppu * pPpu, size_t cBChr, NTMIR ntmir)
+{
+	// BB - should this just sbe broken into a few smaller routines?
+
+	ZeroAB(pPpu->m_aPVramMap, FF_DIM(pPpu->m_aPVramMap));
+
+	FF_ASSERT(cBChr == FF_KIB(8), "expected 8k, need to handle odd size");
+	MapPpuMemorySpan(pPpu, 0, pPpu->m_aBChr, cBChr);
+
+	SetNametableMapping(pPpu, ntmir);
 
 	// palettes
 	u16 addrPalette = PADDR_PaletteRam;

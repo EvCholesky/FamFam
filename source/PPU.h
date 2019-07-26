@@ -29,7 +29,8 @@ enum NTMIR	// Name Table MIRroring
 {
 	NTMIR_Vertical,		// Vertical mirroring: $2000 equals $2800 and $2400 equals $2C00 (e.g. Super Mario Bros.)
 	NTMIR_Horizontal,	// Horizontal mirroring: $2000 equals $2400 and $2800 equals $2C00 (e.g. Kid Icarus)
-	NTMIR_OneScreen,	// One-screen mirroring: All nametables refer to the same memory at any given time, and the mapper directly manipulates CIRAM address bit 10
+	NTMIR_OneScreenLow,	// One-screen mirroring: All nametables refer to the same memory at any given time, and the mapper directly manipulates CIRAM address bit 10
+	NTMIR_OneScreenHigh,// One-screen mirroring: All nametables refer to the same memory at any given time, and the mapper directly manipulates CIRAM address bit 10
 	NTMIR_FourScreen,	// Four-screen mirroring: CIRAM is disabled, and the cartridge contains additional VRAM used for all nametables 
 };
 
@@ -297,6 +298,7 @@ struct Ppu
 
 void StaticInitPpu(Ppu * pPpu, Platform * pPlat);
 void InitPpuMemoryMap(Ppu * pPpu, size_t cBChr, NTMIR ntmir);
+void SetNametableMapping(Ppu * pPpu, NTMIR ntmir);
 void InitChrMemory(Ppu * pPpu, u16 addrVram, u8 * pBChr, size_t cBChr);
 void DrawChrMemory(Ppu * pPpu, Texture * pTex, bool fUse8x16);
 void DrawNameTableMemory(Ppu * pPpu, Texture * pTex);
