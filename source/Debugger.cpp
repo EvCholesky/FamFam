@@ -197,6 +197,16 @@ void UpdateDisassemblyWindow(Famicom * pFam, bool * pFShowDisasm)
         return;
     }
 
+	auto pCart = pFam->m_pCart;
+	if (pFam->m_stepk == STEPK_Stop && pCart->m_fRecomputeAddrInstruct)
+	{
+		AppendAddrOffset(
+			&pFam->m_ppu, 
+			&pCart->m_aryAddrInstruct, 
+			pCart->m_addrPrgMappedMin, 
+			pCart->m_addrPrgMappedMax - pCart->m_addrPrgMappedMin);
+	}
+
 	// toolbar
 	static bool fShowBytes = true;
 	static char aChSeek[8] = "$";
@@ -205,8 +215,6 @@ void UpdateDisassemblyWindow(Famicom * pFam, bool * pFShowDisasm)
 	ImGui::SameLine();
     ImGui::Checkbox("Show Bytes", &fShowBytes);
 
-	// 
-	auto pCart = pFam->m_pCart;
     ImGui::BeginChild("Listing");
 
     // Multiple calls to Text(), manually coarsely clipped - demonstrate how to use the ImGuiListClipper helper.
@@ -504,7 +512,7 @@ void UpdateNameTableWindow(Debugger * pDebug, Famicom * pFam, Platform * pPlat)
 {
 	auto pNtwin = &pDebug->m_ntwin;
 
-	s64 cFrame = CFrameFromTickp(pFam->m_tickp);
+	s64 cFrame = CFrameFromTickp(&pFam->m_tickp);
 	if (cFrame % pNtwin->m_cFrameRefresh == 0)
 	{
 		DrawNameTableMemory(&pFam->m_ppu, pNtwin->m_pTex);

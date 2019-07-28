@@ -453,10 +453,13 @@ public:
 							Resize(cResize);
 					}
 
-	void		RemoveSpan(int iMin, int iMax)
+	void		RemoveSpan(size_t iMin, size_t iMax)
 					{
+						if (iMin >= iMax)
+							return;
+
 						T * pEnd = &m_a[m_c];
-						int i = iMin;
+						size_t i = iMin;
 						for (T * pSrc = &m_a[i], * pDst = &m_a[iMax]; pSrc != pEnd; ++pSrc, ++i)
 						{
 							if (i < iMax)

@@ -19,19 +19,20 @@ int CPageRom(int nMSB, int nLSB)
 	return n;
 }
 
-void AppendAddrOffset(DynAry<u16> * pAryAddrInstruct, u16 addrBase, u8 * pBPrg, int cB)
+void AppendAddrOffset(Ppu * pPpu, DynAry<u16> * pAryAddrInstruct, u16 addrBase, int cB)
 {
 	FF_ASSERT(pAryAddrInstruct->FIsEmpty() || pAryAddrInstruct->Last() < addrBase, "instructions added out of order");
 
-	int dB = 0;
-	while (dB < cB)
+	int addrIt = addrBase;
+	int addrEnd = addrBase + cB;
+	while (addrIt < addrEnd)
 	{
-		u8 bOpcode = pBPrg[dB];
+		u8 bOpcode = *PBVram(pPpu, addrIt);
 		auto pOpinfo = POpinfoFromOpcode(bOpcode); 
 		auto pAmrwinfo = PAmrwinfoFromAmrw(pOpinfo->m_amrw);
 
-		pAryAddrInstruct->Append(dB + addrBase);
-		dB += pAmrwinfo->m_cB;
+		pAryAddrInstruct->Append(addrIt);
+		addrIt += pAmrwinfo->m_cB;
 	}
 }
 
@@ -86,13 +87,12 @@ bool FTrySetupMapperNrom(Famicom * pFam, Cart* pCart)
 	{
 	case FF_KIB(16):
 		{
-			auto addrspPrg = AddrspMapMemory(pMemmp, 0x8000, 0xC000, &memdescReadOnly);
+			auto addrspPrg = AddrspMapMemory(pMemmp, 0x8000, 0xC000, &memdescReadOnly, 1);
 			MapMirrored(pMemmp, addrspPrg, 0xC000, 0x10000);
 			CopyAB(pCart->m_pBPrgRom, &pMemmp->m_aBRaw[0x8000], FF_KIB(16));
 
-			AppendAddrOffset(&pCart->m_aryAddrInstruct, 0x8000, pCart->m_pBPrgRom, pCart->m_cBPrgRom);
-			AppendAddrOffset(&pCart->m_aryAddrInstruct, 0xC000, pCart->m_pBPrgRom, pCart->m_cBPrgRom);
-
+			pCart->m_addrPrgMappedMin = 0x8000;
+			pCart->m_addrPrgMappedMax = 0x10000;
 			VerifyPrgRom(pMemmp, pCart->m_pBPrgRom, 0x8000, 0xC000);
 			VerifyPrgRom(pMemmp, pCart->m_pBPrgRom, 0x8000, 0xC000);
 		}break;
@@ -101,8 +101,6 @@ bool FTrySetupMapperNrom(Famicom * pFam, Cart* pCart)
 			(void)AddrspMapMemory(pMemmp, 0x8000, 0x10000, &memdescReadOnly, 1);
 			CopyAB(pCart->m_pBPrgRom, &pMemmp->m_aBRaw[0x8000], FF_KIB(32));
 
-			AppendAddrOffset(&pCart->m_aryAddrInstruct, 0x8000, pCart->m_pBPrgRom, pCart->m_cBPrgRom);
-
 			VerifyPrgRom(pMemmp, pCart->m_pBPrgRom, 0x8000, 0x10000);
 		} break;
 
@@ -110,6 +108,8 @@ bool FTrySetupMapperNrom(Famicom * pFam, Cart* pCart)
 		ShowError("unexpected PRG rom size %d bytes", pCart->m_cBPrgRom);
 		return false;
 	}
+
+	pCart->m_fRecomputeAddrInstruct = true;
 
 	//TestMemoryMap(pMemmp);
 
@@ -240,14 +240,19 @@ void UpdateBanks(Famicom * pFam, MapperMMC1 * pMapr1)
 
 		pCart->m_aryAddrInstruct.Clear();
 
+		pCart->m_addrPrgMappedMin = rpagePrg0.m_iB;
+		pCart->m_addrPrgMappedMax = rpagePrg0.m_iB + rpagePrg0.m_cB;
+
 		CopyAB(&pCart->m_pBPrgRom[rpagePrg0.m_iB], &pMemmp->m_aBRaw[0x8000], rpagePrg0.m_cB);
-		AppendAddrOffset(&pCart->m_aryAddrInstruct, 0x8000, &pCart->m_pBPrgRom[rpagePrg0.m_iB], rpagePrg0.m_cB);
+		pCart->m_fRecomputeAddrInstruct = true;
 
 		if (rpagePrg1.m_cB != 0)
 		{
 			FF_ASSERT(rpagePrg1.m_cB == FF_KIB(16));
 			CopyAB(&pCart->m_pBPrgRom[rpagePrg1.m_iB], &pMemmp->m_aBRaw[0xC000], rpagePrg1.m_cB);
-			AppendAddrOffset(&pCart->m_aryAddrInstruct, 0xC000, &pCart->m_pBPrgRom[rpagePrg1.m_iB], rpagePrg1.m_cB);
+
+			pCart->m_addrPrgMappedMin = rpagePrg1.m_iB;
+			pCart->m_addrPrgMappedMax = rpagePrg1.m_iB + rpagePrg0.m_cB;
 		}
 	}
 
@@ -256,84 +261,6 @@ void UpdateBanks(Famicom * pFam, MapperMMC1 * pMapr1)
 		RomPage rpageChr0, rpageChr1;
 		ComputeChrPagesMmc1(aBReg, &rpageChr0, &rpageChr1);
 
-		if (rpageChr1.m_cB != 0)
-		{
-			InitChrMemory(&pFam->m_ppu, 0x0000, &pCart->m_pBChrRom[rpageChr0.m_iB], rpageChr0.m_cB);
-			InitChrMemory(&pFam->m_ppu, 0x1000, &pCart->m_pBChrRom[rpageChr1.m_iB], rpageChr1.m_cB);
-		}
-		else
-		{
-			InitChrMemory(&pFam->m_ppu, 0x0000, &pCart->m_pBChrRom[rpageChr0.m_iB], rpageChr0.m_cB);
-		}
-	}
-}
-
-void UpdateBanksSlow(Famicom * pFam, MapperMMC1 * pMapr1)
-{
-	u8 * aBReg = pMapr1->m_aBReg;
-	u8 * aBRegPrev = pMapr1->m_aBRegPrev;
-
-	RomPage rpagePrg0, rpagePrg1;
-	RomPage rpagePrgPrev0, rpagePrgPrev1;
-	RomPage rpageChr0, rpageChr1;
-	RomPage rpageChrPrev0, rpageChrPrev1;
-
-	ComputePrgPagesMmc1(aBReg, pFam->m_pCart, &rpagePrg0, &rpagePrg1);
-	ComputeChrPagesMmc1(aBReg, &rpageChr0, &rpageChr1);
-
-	auto pMemmp = &pFam->m_memmp;
-	Cart * pCart = pFam->m_pCart; 
-
-	bool fHasPrgChanged = true;
-	bool fHasChrChanged = true;
-	if (aBRegPrev != nullptr)
-	{
-		ComputePrgPagesMmc1(aBRegPrev, pFam->m_pCart, &rpagePrgPrev0, &rpagePrgPrev1);
-		ComputeChrPagesMmc1(aBRegPrev, &rpageChrPrev0, &rpageChrPrev1);
-		fHasPrgChanged = !FAreSamePage(&rpagePrg0, &rpagePrgPrev0) || !FAreSamePage(&rpagePrg1, &rpagePrgPrev1);
-		fHasChrChanged = !FAreSamePage(&rpageChr0, &rpageChrPrev0) || !FAreSamePage(&rpageChr1, &rpageChrPrev1);
-		CopyAB(aBReg, aBRegPrev, sizeof(pMapr1->m_aBReg));
-
-		if (fHasPrgChanged)
-		{
-			UnmapMemory(pMemmp, 0x8000, 0x8000 + rpagePrgPrev0.m_cB);
-			UnmapMemory(pMemmp, 0xC000, 0xC000 + rpagePrgPrev1.m_cB);
-		}
-
-		if (fHasChrChanged)
-		{
-		//	UnmapChrMemory(pFam->m_pMemmp, 0x0000, 0x0000 + rpageChrPrev0.m_cB);
-		//	UnmapChrMemory(pFam->m_pMemmp, 0x1000, 0x1000 + rpageChrPrev1.m_cB);
-		}
-	}
-
-	if (fHasPrgChanged)
-	{
-		pCart->m_aryAddrInstruct.Clear();
-
-		MemoryDescriptor memdescPrgMmc1(FMEM_None, pMapr1->m_iMemcbWriteMem);
-
-		(void) AddrspMapMemory(pMemmp, 0x8000, 0x8000 + rpagePrg0.m_cB, &memdescPrgMmc1, 1);
-		CopyAB(&pCart->m_pBPrgRom[rpagePrg0.m_iB], &pMemmp->m_aBRaw[0x8000], rpagePrg0.m_cB);
-		AppendAddrOffset(&pCart->m_aryAddrInstruct, 0x8000, &pCart->m_pBPrgRom[rpagePrg0.m_iB], rpagePrg0.m_cB);
-
-		if (rpagePrg1.m_cB != 0)
-		{
-			FF_ASSERT(rpagePrg1.m_cB == FF_KIB(16));
-			(void) AddrspMapMemory(pMemmp, 0xC000, 0x10000, &memdescPrgMmc1, 1);
-			CopyAB(&pCart->m_pBPrgRom[rpagePrg1.m_iB], &pMemmp->m_aBRaw[0xC000], rpagePrg1.m_cB);
-
-			AppendAddrOffset(&pCart->m_aryAddrInstruct, 0xC000, &pCart->m_pBPrgRom[rpagePrg1.m_iB], rpagePrg1.m_cB);
-//			printf(" 0x8000 = %d, 0xC000 = %d\n", rpagePrg0.m_iB, rpagePrg1.m_iB);
-		}
-		else
-		{
-//			printf(" 0x8000 = %d\n", rpagePrg0.m_iB);
-		}
-	}
-
-	if (fHasChrChanged && pCart->m_cBChrRom > 0)
-	{
 		if (rpageChr1.m_cB != 0)
 		{
 			InitChrMemory(&pFam->m_ppu, 0x0000, &pCart->m_pBChrRom[rpageChr0.m_iB], rpageChr0.m_cB);

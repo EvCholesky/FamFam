@@ -3,7 +3,7 @@
 #include "Array.h"
 #include "Common.h"
 #include "Opcodes.h"
-#include "PPu.h"
+#include "Ppu.h"
 
 static const int kCBRamPhysical = 2 * 1024; // 0x800
 
@@ -246,7 +246,7 @@ enum STEPK
 struct Famicom // tag = fam
 {
 					Famicom()
-					:m_tickp(0)
+					:m_tickp{0}
 					,m_fIsRomLoaded(false)
 					,m_stepk(STEPK_Run)
 					,m_pKeyps(nullptr)
@@ -259,7 +259,7 @@ struct Famicom // tag = fam
 	Cpu				m_cpuPrev;
 
 	PpuTiming		m_ptimCpu;		// how far has the cpu simulation processed the ppuClock
-	u64				m_tickp;		// how far has the ppu simulated
+	TickPpu			m_tickp;		// how far has the ppu simulated
 	bool			m_fIsRomLoaded;
 	STEPK			m_stepk;
 

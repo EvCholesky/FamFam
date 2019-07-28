@@ -57,12 +57,12 @@ void ClearCommandHistory(Ppu * pPpu)
 	pPpu->m_aryPpuchf.Clear();
 }
 
-void RecordCommandHistory(Ppu * pPpu, u64 tickp, PpuCommand * ppucmd)
+void RecordCommandHistory(Ppu * pPpu, TickPpu * pTickp, PpuCommand * ppucmd)
 {
 	s64 cFrame, cSubframe;
 	int cScanline, iCol;
-	SplitTickpFrame(tickp, &cFrame, &cSubframe);
-	SplitTickpScanline(tickp, &cScanline, &iCol);
+	SplitTickpFrame(pTickp, &cFrame, &cSubframe);
+	SplitTickpScanline(pTickp, &cScanline, &iCol);
 
 	auto paryPpuchf = &pPpu->m_aryPpuchf;
 	if (paryPpuchf->FIsEmpty() || cFrame != (*paryPpuchf)[0].m_cFrame)
@@ -111,8 +111,7 @@ void AppendPpuCommand(PpuCommandList * pPpucl, PCMDK pcmdk, u16 addr, u8 bValue,
 u8 * PBVram(Ppu * pPpu, u16 addr)
 {
 	addr &= 0x3FFF;
-	u8 * pBGranule = pPpu->m_aPVramMap[addr / s_cBVramGranularity];
-	return pBGranule + (addr % s_cBVramGranularity);
+	return pPpu->m_aPVramMap[addr];
 }
 
 void UpdatePpu(Famicom * pFam, const PpuTiming & ptimEnd)
@@ -122,10 +121,10 @@ void UpdatePpu(Famicom * pFam, const PpuTiming & ptimEnd)
 	size_t iPpucmd = pPpucl->m_iPpucmdExecute;
 	Ppu * pPpu = &pFam->m_ppu;
 
-	while (pFam->m_tickp < ptimEnd.m_tickp)
+	while (FLessThan(&pFam->m_tickp, &ptimEnd.m_tickp))
 	{
 		PpuCommand * pPpucmd;
-		s64 tickpNext; 
+		TickPpu tickpNext; 
 		if (iPpucmd >= pPpucl->m_aryPpucmd.C())
 		{
 			pPpucmd = nullptr;
@@ -139,7 +138,7 @@ void UpdatePpu(Famicom * pFam, const PpuTiming & ptimEnd)
 		}
 
 		// update ppu until the new time
-		DrawScreen(pPpu, pFam->m_tickp, tickpNext);
+		DrawScreen(pPpu, TickpU64(&pFam->m_tickp), TickpU64(&tickpNext));
 
 		if (pPpucmd)
 		{
@@ -265,7 +264,7 @@ void UpdatePpu(Famicom * pFam, const PpuTiming & ptimEnd)
 				
 			}
 
-			RecordCommandHistory(&pFam->m_ppu, tickpNext, pPpucmd);
+			RecordCommandHistory(&pFam->m_ppu, &tickpNext, pPpucmd);
 		}
 
 		pFam->m_tickp = tickpNext;
@@ -286,15 +285,16 @@ void AdvancePpuTiming(Famicom * pFam, s64 tickc, MemoryMap * pMemmp)
 	bool fSpritesEnabled = pMemmp->m_aBRaw[PPUREG_Mask] & 0x10;
 	bool fIsRenderEnabled = fBackgroundEnabled | fSpritesEnabled;
 
+	TickPpu * pTickp = &pPtim->m_tickp;
 	s64 cFramePrev;
 	s64 tickpSubframePrev;
-	SplitTickpFrame(pPtim->m_tickp, &cFramePrev, &tickpSubframePrev);
+	SplitTickpFrame(pTickp, &cFramePrev, &tickpSubframePrev);
 
-	pPtim->m_tickp += dTickc * s_dTickpPerTickc;
+	IncrementTickp(pTickp, dTickc * s_dTickpPerTickc);
 
 	s64 cFrame;
 	s64 tickpSubframe;
-	SplitTickpFrame(pPtim->m_tickp, &cFrame, &tickpSubframe);
+	SplitTickpFrame(pTickp, &cFrame, &tickpSubframe);
 
 	// NOTE: we're skipping the first tickp following an odd frame.
 	bool fIsOddFrame = (cFramePrev & 0x1) != 0;
@@ -305,7 +305,7 @@ void AdvancePpuTiming(Famicom * pFam, s64 tickc, MemoryMap * pMemmp)
 	{
 		// Odd frames (with rendering enabled) are one cycle shorter - this cycle is dropped from the
 		//  first idle cycle of the  first scanline
-		++pPtim->m_tickp;
+		IncrementTickp(pTickp, 1);
 
 		FF_ASSERT(dTickc * s_dTickpPerTickc < s_dTickpPerFrame, "not handling a full frame step here");
 		++tickpSubframe;
@@ -353,13 +353,13 @@ RGBA RgbaFromHwcol(HWCOL hwcol)
 
 void MapPpuMemorySpan(Ppu * pPpu, u16 addrMin, u8 * pB, int cB)
 {
-	int cSpan = cB / s_cBVramGranularity;
-	u8 ** ppBMap = &pPpu->m_aPVramMap[addrMin / s_cBVramGranularity];
+	int cSpan = cB;
+	u8 ** ppBMap = &pPpu->m_aPVramMap[addrMin];
 	u8 * pBTarget = pB;
 	for (int iSpan = 0; iSpan < cSpan; ++iSpan)
 	{
 		*ppBMap = pBTarget;
-		pBTarget += s_cBVramGranularity;
+		pBTarget += 1;
 		++ppBMap;
 	}
 }

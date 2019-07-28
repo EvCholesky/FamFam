@@ -1765,7 +1765,7 @@ int CChPrintCpuState(Famicom * pFam, char * pChz, int cChMax)
 	const PpuTiming * pPtim = &pFam->m_ptimCpu;
 	int cScanline;
 	int tickpScanline;
-	SplitTickpScanline(pFam->m_ptimCpu.m_tickp, &cScanline, &tickpScanline);
+	SplitTickpScanline(&pFam->m_ptimCpu.m_tickp, &cScanline, &tickpScanline);
 
 	u8 p = pCpu->m_p | FCPU_Unused;
 	int iCh = sprintf_s(pChz, cChMax, "A:%02X X:%02X Y:%02X P:%02X SP:%02X PPU:%3i,%3i CYC:%I64d", 
@@ -1986,7 +1986,7 @@ bool FTryRunLogTest(const char * pChzFilenameRom, const char * pChzFilenameLog, 
 	char aChLog[128];
 	int cLineLog = 0;
 	int cStep = 0;
-	auto cFramePrev = CFrameFromTickp(fam.m_ptimCpu.m_tickp);
+	auto cFramePrev = CFrameFromTickp(&fam.m_ptimCpu.m_tickp);
 	while (pBLogIt != pBLogMax)
 	{
 		LogLine * pLline = PLlineAppend(&lhist);
@@ -2009,7 +2009,7 @@ bool FTryRunLogTest(const char * pChzFilenameRom, const char * pChzFilenameLog, 
 
 		StepCpu(&fam);
 
-		auto cFrameNew = CFrameFromTickp(fam.m_ptimCpu.m_tickp);
+		auto cFrameNew = CFrameFromTickp(&fam.m_ptimCpu.m_tickp);
 		if (cFrameNew != cFramePrev)
 		{
 			UpdatePpu(&fam, fam.m_ptimCpu);
@@ -2068,8 +2068,8 @@ void ExecuteFamicomFrame(Famicom * pFam)
 
 	if (pFam->m_stepk == STEPK_Run)
 	{
-		s64 cFramePrev = CFrameFromTickp(pFam->m_ptimCpu.m_tickp);
-		while (pFam->m_stepk == STEPK_Run && cFramePrev == CFrameFromTickp(pFam->m_ptimCpu.m_tickp))
+		s64 cFramePrev = CFrameFromTickp(&pFam->m_ptimCpu.m_tickp);
+		while (pFam->m_stepk == STEPK_Run && cFramePrev == CFrameFromTickp(&pFam->m_ptimCpu.m_tickp))
 		{
 			if (s_fTraceCpu)
 			{
@@ -2084,10 +2084,10 @@ void ExecuteFamicomFrame(Famicom * pFam)
 
 	s64 cFrame;
 	s64 tickpSubframe;
-	SplitTickpFrame(pFam->m_ptimCpu.m_tickp, &cFrame, &tickpSubframe);
+	SplitTickpFrame(&pFam->m_ptimCpu.m_tickp, &cFrame, &tickpSubframe);
 
 	PpuTiming ptimFrameEnd = pFam->m_ptimCpu;
-	ptimFrameEnd.m_tickp -= tickpSubframe;
+	ptimFrameEnd.m_tickp = TickpFromFrameSubframe(cFrame, 0);
 	UpdatePpu(pFam, ptimFrameEnd);
 }
  

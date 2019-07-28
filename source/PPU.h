@@ -6,7 +6,6 @@ static const int kCBCieramMax = FF_KIB(4);
 static const int kCBChrMapped = FF_KIB(8);
 static const int kCBVramAddressable = FF_KIB(16);
 static const int kCBPalette = 32;
-static const int s_cBVramGranularity = 1;		
 
 static const int s_cXChrTile = 16;
 static const int s_cYChrTile = 16;
@@ -34,14 +33,77 @@ enum NTMIR	// Name Table MIRroring
 	NTMIR_FourScreen,	// Four-screen mirroring: CIRAM is disabled, and the cartridge contains additional VRAM used for all nametables 
 };
 
+#define TRY_SPLIT_TICKP 1
+#if TRY_SPLIT_TICKP
+union TickPpu
+{
+	u64			m_tickpRaw;
+	struct 
+	{
+		u32		m_cSubframe;
+		u32		m_cFrame;
+	};
+};
+
+inline void IncrementTickp(TickPpu * pTickp, u32 c)
+{
+	pTickp->m_cSubframe += c;
+	if (pTickp->m_cSubframe > s_dTickpPerFrame)
+	{
+		pTickp->m_cSubframe -= s_dTickpPerFrame;
+		++pTickp->m_cFrame;
+	}
+}
+
+inline u64 TickpU64(const TickPpu * pTickp)
+{
+	return u64(pTickp->m_cSubframe) + u64(pTickp->m_cFrame) * s_dTickpPerFrame;
+}
+
+inline s64 CFrameFromTickp(TickPpu * pTickp)
+{ 
+	return pTickp->m_cFrame;
+}
+inline TickPpu TickpFromFrameSubframe(u64 cFrame, u64 cSubframe)
+{
+	TickPpu tickp;
+	tickp.m_cFrame = u32(cFrame);
+	tickp.m_cSubframe = u32(cSubframe);
+	return tickp;
+}
+
+#else
+struct TickPpu
+{
+	u64			m_tickpRaw;
+};
+
+inline void IncrementTickp(TickPpu * pTickp, u32 c)		{ pTickp->m_tickpRaw += c; }
+inline u64 TickpU64(const TickPpu * pTickp)					{return pTickp->m_tickpRaw;}
+inline s64 CFrameFromTickp(TickPpu * pTickp)			{ return pTickp->m_tickpRaw / s_dTickpPerFrame; }
+
+inline TickPpu TickpFromFrameSubframe(u64 cFrame, u32 cSubframe)
+{
+	TickPpu tickp;
+	tickp.m_tickpRaw = cFrame * s_dTickpPerFrame + cSubframe;
+	return tickp;
+}
+#endif
+
+inline bool FLessThan(const TickPpu * pTickpA, const TickPpu * pTickpB)
+{
+	return pTickpA->m_tickpRaw < pTickpB->m_tickpRaw;
+}
+
+
 struct PpuTiming // tag = ptim
 {
 					PpuTiming()
-					:m_tickp(0)
+					:m_tickp{0}
 					,m_tickcPrev(0)
 						{ ; }
 
-	u64				m_tickp;			// ppu clock cycle, not resetting every frame
+	TickPpu			m_tickp;			// ppu clock cycle, not resetting every frame
 	s64				m_tickcPrev;		// count of cycles at the time of the last ppu update
 };
 
@@ -52,12 +114,35 @@ inline s64 CFrameFromTickp(s64 tickp)
 	return tickp / s_dTickpPerFrame;
 }
 
-inline void SplitTickpFrame(s64 tickp, s64 * pCFrame, s64 * pTickpSubframe)
+#if TRY_SPLIT_TICKP
+inline void SplitTickpFrame(TickPpu * pTickp, s64 * pCFrame, s64 * pTickpSubframe)
 {
+	*pCFrame = pTickp->m_cFrame;
+	*pTickpSubframe = pTickp->m_cSubframe;
+}
+
+inline void SplitTickpScanline(TickPpu * pTickp, int * pCScanline, int * pTickpScanline )
+{
+	s64 tickpSubframe = pTickp->m_cSubframe;
+	*pCScanline = int(tickpSubframe / s_dTickpPerScanline);
+	*pTickpScanline = int(tickpSubframe % s_dTickpPerScanline);
+}
+#else
+inline void SplitTickpFrame(TickPpu * pTickp, s64 * pCFrame, s64 * pTickpSubframe)
+{
+	s64 tickp = pTickp->m_tickpRaw;
 	s64 cFrame = tickp / s_dTickpPerFrame;
 	*pCFrame = cFrame;
 	*pTickpSubframe = tickp - (cFrame * s_dTickpPerFrame);
 }
+
+inline void SplitTickpScanline(TickPpu * pTickp, int * pCScanline, int * pTickpScanline )
+{
+	s64 tickpSubframe = pTickp->m_tickpRaw % s_dTickpPerFrame;
+	*pCScanline = int(tickpSubframe / s_dTickpPerScanline);
+	*pTickpScanline = int(tickpSubframe % s_dTickpPerScanline);
+}
+#endif
 
 inline void SplitTickpScanline(s64 tickp, int * pCScanline, int * pTickpScanline )
 {
@@ -82,7 +167,7 @@ struct PpuCommand  // tag = ppucmd
 	s8				m_iPpucres;			// result slot to the read result; -1 for no store.
 	u16				m_addr;
 	u16				m_addrInstDebug;	// address of the instruction that caused this command
-	u64				m_tickp;			// BB - could save space if these were stored as dTickp, and we adjusted when we removed the executed spans  
+	TickPpu			m_tickp;			// BB - could save space if these were stored as dTickp, and we adjusted when we removed the executed spans  
 };
 
 struct PpuCommandResult	// tag ppucres
@@ -115,7 +200,7 @@ void ClearCommandHistory(Ppu * pPpu);
 void RecordCommandHistory(Ppu * pPpu, u64 tickp, PpuCommand * ppucmd);
 #else
 inline void ClearCommandHistory(Ppu * pPpu) {}
-inline void RecordCommandHistory(Ppu * pPpu, u64 tickp, PpuCommand * ppucmd) {} 
+inline void RecordCommandHistory(Ppu * pPpu, TickPpu * pTickp, PpuCommand * ppucmd) {} 
 #endif
 
 struct PpuCommandList // tag = ppucl
@@ -269,8 +354,8 @@ struct Ppu
 	u8 				m_aBCieram[kCBCieramMax];			// 4k of physical VRAM, aka CIRAM (ppu actually only has 2k, some carts have an extra 2k
 	u8				m_aBChr[kCBChrMapped];				// 8k current mapped Chr rom
 	u8				m_aBPalette[kCBPalette];
-	u8 *			m_aPVramMap[kCBVramAddressable / s_cBVramGranularity];	// PPU memory mapping is a lot simpler than the CPU
-																			//  memory map, so we'll just use a pointer every 32 bytes
+	u8 *			m_aPVramMap[kCBVramAddressable];	// PPU memory mapping is a lot simpler than the CPU
+														//  memory map, so we'll just use a pointer every 32 bytes
 
 	OAM				m_aOam[64];				// internal OAM memory - sprite data
 	OAM				m_aOamLine[8];			// internal sprite memory inaccessible to the program; used to cache the sprites rendered in the current scanline. 
@@ -303,4 +388,6 @@ void InitChrMemory(Ppu * pPpu, u16 addrVram, u8 * pBChr, size_t cBChr);
 void DrawChrMemory(Ppu * pPpu, Texture * pTex, bool fUse8x16);
 void DrawNameTableMemory(Ppu * pPpu, Texture * pTex);
 
+u8 * PBVram(Ppu * pPpu, u16 addr);
 void DrawScreen(Ppu * pPpu, u64 tickpMin, u64 tickpMax);
+

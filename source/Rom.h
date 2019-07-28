@@ -103,6 +103,9 @@ struct Cart
 					,m_cBPrgRam(0)
 					,m_cBChrRom(0)
 					,m_cBChrRam(0)
+					,m_addrPrgMappedMin(0)
+					,m_addrPrgMappedMax(0)
+					,m_fRecomputeAddrInstruct(true)
 						{ ; }
 
 	MAPPERK			m_mapperk;
@@ -116,9 +119,13 @@ struct Cart
 	int				m_cBPrgRam;
 	int				m_cBChrRom;
 	int				m_cBChrRam;
+	int				m_addrPrgMappedMin;
+	int				m_addrPrgMappedMax;
+	bool			m_fRecomputeAddrInstruct;
 };
 
 
+void AppendAddrOffset(Ppu * pPpu, DynAry<u16> * pAryAddrInstruct, u16 addrBase, int cB);
 
 bool FTryLoadRomFromFile(const char * pChzFilename, Cart * pCart, Famicom * pFam, FPOW fpow);
 bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart, Famicom * pFam, FPOW fpow);
