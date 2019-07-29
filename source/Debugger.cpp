@@ -527,6 +527,7 @@ void UpdateNameTableWindow(Debugger * pDebug, Famicom * pFam, Platform * pPlat)
     }
 
 	ImGui::Image((void*)(intptr_t)pNtwin->m_pTex->m_nId, ImVec2(512, 512));
+	ImGui::Text("Mirroring: %s", PChzFromNtmir(pFam->m_ppu.m_ntmir));
 
     ImGui::End();
 }

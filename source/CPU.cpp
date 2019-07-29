@@ -306,39 +306,34 @@ void WriteControllerLatch(Famicom * pFam, u16 addr, u8 b)
 
 void WriteRomMmc1(Famicom * pFam, u16 addr, u8 b)
 {
-	if (addr > 0x8000)
+	auto pMapr1 = PMapr1(pFam);
+	if (b & 0x80)
 	{
-		auto pMapr1 = PMapr1(pFam);
-		if (b & 0x80)
+		// clear the shift register
+		pMapr1->m_cBitShift = 0;
+		pMapr1->m_bShift = 0;
+	}
+	else
+	{
+		// shift bit 0 into the register
+		++pMapr1->m_cBitShift;
+		pMapr1->m_bShift = ((b & 0x1) << 4) | (pMapr1->m_bShift >> 1);
+
+		if (pMapr1->m_cBitShift > 4)
 		{
-			// clear the shift register
+			int iBReg = (addr >> 13) & 0x3; // register selected by bits 13..14 of the address for the fifth write
+
+			((u8*)&pMapr1->m_nReg)[iBReg] = pMapr1->m_bShift;
 			pMapr1->m_cBitShift = 0;
 			pMapr1->m_bShift = 0;
-		}
-		else
-		{
-			// shift bit 0 into the register
-			++pMapr1->m_cBitShift;
-			pMapr1->m_bShift = ((b & 0x1) << 4) | (pMapr1->m_bShift >> 1);
 
-			if (pMapr1->m_cBitShift > 4)
-			{
-				int iBReg = (addr >> 13) & 0x3; // register selected by bits 13..14 of the address for the fifth write
-				pMapr1->m_aBReg[iBReg] = pMapr1->m_bShift;
-				((u8*)&pMapr1->m_nReg)[iBReg] = pMapr1->m_bShift;
-				pMapr1->m_cBitShift = 0;
-				pMapr1->m_bShift = 0;
-
-				UpdateBanks(pFam, pMapr1);
-			}
+			UpdateBanks(pFam, pMapr1);
 		}
 	}
 
-	// basic write mem inlined without the callback checks
-	auto pMemmp = &pFam->m_memmp;
-	const MemoryDescriptor & memdesc = pMemmp->m_mpAddrMemdesc[addr];
-	pMemmp->m_bPrevBus = b;
+	// this is ROM memory so we don't need to write out to memory, just set the prevBus value
 
+	pFam->m_memmp.m_bPrevBus = b;
 	TickCpu(pFam);
 }
 

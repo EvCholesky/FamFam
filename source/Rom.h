@@ -82,8 +82,6 @@ struct MapperMMC1 // tag = mapr1
 	u8		m_bShift;				// how many bits have been shifted in via writes to 0x8000..0xFFFFF
 	u32		m_nReg;
 	u32		m_nRegPrev;
-	u8		m_aBReg[MAPREG1_Max];
-	u8		m_aBRegPrev[MAPREG1_Max];
 	u8		m_iMemcbWriteMem;
 };
 

@@ -24,14 +24,20 @@ struct Platform;
 struct Ppu;
 struct Texture;
 
-enum NTMIR	// Name Table MIRroring
+enum NTMIR // Name Table MIRroring
 {
 	NTMIR_Vertical,		// Vertical mirroring: $2000 equals $2800 and $2400 equals $2C00 (e.g. Super Mario Bros.)
 	NTMIR_Horizontal,	// Horizontal mirroring: $2000 equals $2400 and $2800 equals $2C00 (e.g. Kid Icarus)
 	NTMIR_OneScreenLow,	// One-screen mirroring: All nametables refer to the same memory at any given time, and the mapper directly manipulates CIRAM address bit 10
 	NTMIR_OneScreenHigh,// One-screen mirroring: All nametables refer to the same memory at any given time, and the mapper directly manipulates CIRAM address bit 10
 	NTMIR_FourScreen,	// Four-screen mirroring: CIRAM is disabled, and the cartridge contains additional VRAM used for all nametables 
+
+	NTMIR_Max,
+	NTMIR_Min = 0,
+	NTMIR_Nil = -1,
 };
+
+const char  * PChzFromNtmir(NTMIR ntmir);
 
 #define TRY_SPLIT_TICKP 1
 #if TRY_SPLIT_TICKP
@@ -374,6 +380,7 @@ struct Ppu
 	u8				m_bOamAddr;				// least significant byte of the OAM address
 	u8				m_bReadBuffer;
 	bool			m_fIsFirstAddrWrite;	// address register latch 
+	NTMIR			m_ntmir;
 
 	Texture *		m_pTexScreen;
 

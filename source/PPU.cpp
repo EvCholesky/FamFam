@@ -6,6 +6,28 @@
 static const int s_cRgbaPalette = 4;
 extern bool s_fTraceCpu;
 
+const char * PChzFromNtmir(NTMIR ntmir)
+{
+	static const char * s_mpNtmirPChz[] =
+	{
+		"Vertical",
+		"Horizontal",
+		"OneScreenLow",
+		"OneScreenHigh",
+		"FourScreen",
+	};
+	static_assert(FF_DIM(s_mpNtmirPChz) == NTMIR_Max, "missing NTMIR string");
+	if (ntmir == NTMIR_Nil)
+		return "Nil";
+
+	if ((ntmir < NTMIR_Nil) | (ntmir >= NTMIR_Max))
+		return "Unknown NTMIR";
+
+	return s_mpNtmirPChz[ntmir];
+}
+
+
+
 Ppu::Ppu()
 :m_pctrl{0}
 ,m_pmask{0}
@@ -16,6 +38,7 @@ Ppu::Ppu()
 ,m_dXScrollFine(0)
 ,m_bOamAddr(0)
 ,m_fIsFirstAddrWrite(true)
+,m_ntmir(NTMIR_Nil)
 ,m_pTexScreen(nullptr)
 {
 	ZeroAB(m_aBCieram, FF_DIM(m_aBCieram));
@@ -395,6 +418,10 @@ void InitChrMemory(Ppu * pPpu, u16 addrVram, u8 * pBChr, size_t cBChr)
 
 void SetNametableMapping(Ppu * pPpu, NTMIR ntmir)
 {
+	if (pPpu->m_ntmir == ntmir)
+		return;
+	pPpu->m_ntmir = ntmir;
+
 	static const int s_cBNameTable = FF_KIB(1);
 	u8 * pBNameTable0 = &pPpu->m_aBCieram[0];
 	u8 * pBNameTable1 = &pPpu->m_aBCieram[s_cBNameTable];

@@ -127,8 +127,6 @@ MapperMMC1::MapperMMC1()
 ,m_nReg(0)
 ,m_nRegPrev(0xFFFFFFFF)
 {
-	ZeroAB(m_aBReg, sizeof(m_aBReg));
-	FillAB(0xFF, m_aBRegPrev, sizeof(m_aBRegPrev));
 }
 
 struct RomPage // rpage
@@ -217,7 +215,6 @@ void UpdateBanks(Famicom * pFam, MapperMMC1 * pMapr1)
 	bool fHasChrChanged = (pMapr1->m_nReg & s_nMaskChr) != (pMapr1->m_nRegPrev & s_nMaskChr);
 	pMapr1->m_nRegPrev = pMapr1->m_nReg;
 
-	u8 * aBReg = pMapr1->m_aBReg;
 	if (fHasMirrorChanged)
 	{
 		NTMIR ntmir;
@@ -236,7 +233,7 @@ void UpdateBanks(Famicom * pFam, MapperMMC1 * pMapr1)
 	{
 		auto pMemmp = &pFam->m_memmp;
 		RomPage rpagePrg0, rpagePrg1;
-		ComputePrgPagesMmc1(aBReg, pFam->m_pCart, &rpagePrg0, &rpagePrg1);
+		ComputePrgPagesMmc1((u8*)&pMapr1->m_nReg, pFam->m_pCart, &rpagePrg0, &rpagePrg1);
 
 		pCart->m_aryAddrInstruct.Clear();
 
@@ -259,7 +256,7 @@ void UpdateBanks(Famicom * pFam, MapperMMC1 * pMapr1)
 	if (fHasChrChanged && fUseRom)
 	{
 		RomPage rpageChr0, rpageChr1;
-		ComputeChrPagesMmc1(aBReg, &rpageChr0, &rpageChr1);
+		ComputeChrPagesMmc1((u8*)&pMapr1->m_nReg, &rpageChr0, &rpageChr1);
 
 		if (rpageChr1.m_cB != 0)
 		{
@@ -287,7 +284,7 @@ bool FTrySetupMapperMmc1(Famicom * pFam, Cart* pCart)
 		}
 
 		addrUnmappedMax = 0x6000;
-		(void) AddrspMapMemory(pMemmp, 0x6000, FF_KIB(8));
+		(void) AddrspMapMemory(pMemmp, 0x6000, 0x6000 + FF_KIB(8));
 	}
 
 	(void)AddrspMarkUnmapped(pMemmp, 0x4020, addrUnmappedMax);
@@ -295,7 +292,7 @@ bool FTrySetupMapperMmc1(Famicom * pFam, Cart* pCart)
 	MapperMMC1 * pMapr1 = new MapperMMC1;
 	pMapr1->m_iMemcbWriteMem = IMemcbAllocate(pMemmp, nullptr, &WriteRomMmc1);
 	pFam->m_pVMapr = pMapr1;
-	pMapr1->m_aBReg[0] = 0xC;
+	pMapr1->m_nReg = 0xC;
 
 /*
 	// * Some tests have found (citation needed) that the power on behavior has the last 32k
@@ -411,6 +408,15 @@ bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart, Famicom * pFam, FPOW fpow)
 		mapperk |= ((u16)romfx.m_nMapperMSB) << 8;
 		sizePrgRomMSB = romfx.m_sizePrgRomMSB;
 		sizeChrRomMSB = romfx.m_sizeChrRomMSB;
+		pCart->m_cBPrgRam = 64 << romfx.m_cShiftPrgRam;
+	}
+	else
+	{
+		// iNes has a field for number of 1k PRG ram pages, but no one uses it and a zero infers 8Kb, sigh.
+		// EDIT: after some testing it seems that some iNes(Metroid) files have garbage here, better to just assume 8kb PRG-RAM? 
+		//u32 cPagePrgRam = (pHead->m_romfx.m_nBits & 0xFF0000) >> 16;
+		//pCart->m_cBPrgRam = (cPagePrgRam == 0) ? FF_KIB(8) : FF_KIB(cPagePrgRam);
+		pCart->m_cBPrgRam = FF_KIB(8);
 	}
 
 	pCart->m_cBPrgRom = CPageRom(sizePrgRomMSB, pHead->m_cPagePrgRom) * 16 * 1024;
