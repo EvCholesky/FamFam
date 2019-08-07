@@ -343,7 +343,6 @@ u8 U8PeekMem(MemoryMap * pMemmp, u16 addr)
 	u8 * pB = pMemmp->m_mpAddrPB[addr];
 
 	u8 b = *pB; 
-	pMemmp->m_bPrevBus = b;
 	return b;
 }
 
@@ -1845,8 +1844,6 @@ bool FTryLoadLogFile(const char * pChzFilename, u8 ** ppB, size_t * pCB)
 
 	*ppB = pB;
 	*pCB = cB;
-
-   fclose(pFile);
    return true;
 }
 
@@ -2051,8 +2048,22 @@ bool FTryAllLogTests()
 void StaticInitFamicom(Famicom * pFam, Platform * pPlat)
 {
 	StaticInitPpu(&pFam->m_ppu, pPlat);
+	InitApu(pFam);
+	if (pPlat)
+	{
+		InitPlatformAudio(pFam, &pPlat->m_plaud);
+	}
 
 	SetupDefaultInputMapping(pFam);
+}
+
+s64 DTickcNextFrame(TickPpu * pTickpCur)
+{
+	// BB - This seems like it could be a lot simpler 
+	s64 cFrame = CFrameFromTickp(pTickpCur);
+	TickPpu tickpNext = TickpFromFrameSubframe(cFrame + 1, 0);
+	u64 dTickp = TickpU64(&tickpNext) - TickpU64(pTickpCur);
+	return (dTickp + (s_dTickpPerTickc - 1)) / s_dTickpPerTickc;
 }
 
 void ExecuteFamicomFrame(Famicom * pFam)
@@ -2063,18 +2074,27 @@ void ExecuteFamicomFrame(Famicom * pFam)
 
 	if (pFam->m_stepk == STEPK_Run)
 	{
-		s64 cFramePrev = CFrameFromTickp(&pFam->m_ptimCpu.m_tickp);
-		while (pFam->m_stepk == STEPK_Run && cFramePrev == CFrameFromTickp(&pFam->m_ptimCpu.m_tickp))
+		s64 tickcNextFrame = pFam->m_cpu.m_tickc + DTickcNextFrame(&pFam->m_ptimCpu.m_tickp);
+		do 
 		{
-			if (s_fTraceCpu)
+			pFam->m_tickcExecuteEnd = TickcEarliestIrq(pFam, tickcNextFrame);
+			while (pFam->m_stepk == STEPK_Run && pFam->m_cpu.m_tickc < pFam->m_tickcExecuteEnd)
 			{
-				char aChz[s_cChLine];
-				PrintCpuStateForLog(pFam, aChz, FF_DIM(aChz));
-				printf("%s\n", aChz);
+				if (s_fTraceCpu)
+				{
+					char aChz[s_cChLine];
+					PrintCpuStateForLog(pFam, aChz, FF_DIM(aChz));
+					printf("%s\n", aChz);
+				}
+
+				StepCpu(pFam);
 			}
 
-			StepCpu(pFam);
+			StartTimer(TVAL_UpdateApu);
+			UpdateApu(pFam, pFam->m_cpu.m_tickc);
+			EndTimer(TVAL_UpdateApu);
 		}
+		while (pFam->m_cpu.m_tickc < tickcNextFrame);
 	}
 
 	s64 cFrame;
@@ -2084,5 +2104,9 @@ void ExecuteFamicomFrame(Famicom * pFam)
 	PpuTiming ptimFrameEnd = pFam->m_ptimCpu;
 	ptimFrameEnd.m_tickp = TickpFromFrameSubframe(cFrame, 0);
 	UpdatePpu(pFam, ptimFrameEnd);
+
+	StartTimer(TVAL_UpdateApu);
+	EndFrameApu(pFam, pFam->m_cpu.m_tickc);
+	EndTimer(TVAL_UpdateApu);
 }
  

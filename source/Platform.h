@@ -12,6 +12,9 @@
 struct Famicom;
 struct GLFWwindow;
 
+struct IXAudio2SourceVoice;
+class VoiceCallback;
+
 enum KEYCODE : s16
 {
     KEYCODE_Unknown = 0,
@@ -160,6 +163,7 @@ struct PlatformTime // tag = pltime
 enum TVAL // Timer record 
 {
 	TVAL_FamicomUpdate,
+	TVAL_UpdateApu,
 	TVAL_DebuggerUpdate,
 	TVAL_ImguiRender,
 	TVAL_TotalFrame,
@@ -202,6 +206,28 @@ struct PlatformJoystick // tag = pljoy
 	u8 *			m_aBButtonPrev;	// allocted locally, delete upon controller disconnect
 };
 
+
+
+struct PlatformAudio // tag = plaud
+{
+				PlatformAudio()
+				:m_pVoicecb(nullptr)
+				,m_pSrcvoice(nullptr)
+				,m_iASamp(0)
+					{ ; }
+
+    static const int s_cBitSample = 16;
+	static const u32 s_cSampBuffer = 32000;
+	static const u32 s_cAudioBuffer = 3;
+
+    VoiceCallback *  		m_pVoicecb;
+    IXAudio2SourceVoice *	m_pSrcvoice;
+    s16 					m_aSamp[s_cAudioBuffer * s_cSampBuffer + 8];
+    u8						m_iASamp;	// which is the current buffer (in the triple buffer)
+};
+
+
+
 static const int s_cJoystickMax = 16;
 struct Platform // tag = plat
 {
@@ -213,6 +239,7 @@ struct Platform // tag = plat
 	s64					m_mpTvalCTick[TVAL_Max];	// total ticks this frame
 	float				m_mpTvalDTFrame[TVAL_Max];		// last frame's timings - used for reporting
 
+	PlatformAudio		m_plaud;
 	PlatformJoystick	m_aPljoy[s_cJoystickMax];
 };
 extern Platform g_plat;
@@ -242,6 +269,10 @@ f32 DTFrame(Platform * pPlat, TVAL tval);
 f32 DMsecFrame(Platform * pPlat, TVAL tval);
 void FrameEndTimers(Platform * pPlat);
 void ClearTimers(Platform * pPlat);
+
+void InitPlatformAudio(Famicom * pFam, PlatformAudio * pPlaud);
+void ShutdownPlatformAudio(PlatformAudio * pPlaud);
+void UpdatePlatformAudio(Famicom * pFam, PlatformAudio * pPlaud);
 
 struct Texture
 {

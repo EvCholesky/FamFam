@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Apu.h"
 #include "Array.h"
 #include "Common.h"
 #include "Opcodes.h"
@@ -247,6 +248,7 @@ struct Famicom // tag = fam
 {
 					Famicom()
 					:m_tickp{0}
+					,m_tickcExecuteEnd(0)
 					,m_fIsRomLoaded(false)
 					,m_stepk(STEPK_Run)
 					,m_pKeyps(nullptr)
@@ -258,13 +260,15 @@ struct Famicom // tag = fam
 	Cpu  			m_cpu;
 	Cpu				m_cpuPrev;
 
-	PpuTiming		m_ptimCpu;		// how far has the cpu simulation processed the ppuClock
-	TickPpu			m_tickp;		// how far has the ppu simulated
+	PpuTiming		m_ptimCpu;				// how far has the cpu simulation processed the ppuClock
+	TickPpu			m_tickp;				// how far has the ppu simulated
+	s64				m_tickcExecuteEnd;		// 
 	bool			m_fIsRomLoaded;
 	STEPK			m_stepk;
 
 	Ppu				m_ppu;
 	PpuCommandList	m_ppucl;
+	Apu				m_apu;
 
 	KeyPressState * m_pKeyps;
 	FamicomInput 	m_famin;

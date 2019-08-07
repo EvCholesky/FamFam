@@ -25,6 +25,15 @@
     <ClCompile Include="extern\imgui\imgui_demo.cpp" />
     <ClCompile Include="extern\imgui\imgui_draw.cpp" />
     <ClCompile Include="extern\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="source\Apu.cpp" />
+    <ClCompile Include="source\blargg\nes_apu\apu_snapshot.cpp" />
+    <ClCompile Include="source\blargg\nes_apu\Blip_Buffer.cpp" />
+    <ClCompile Include="source\blargg\nes_apu\Multi_Buffer.cpp" />
+    <ClCompile Include="source\blargg\nes_apu\Nes_Apu.cpp" />
+    <ClCompile Include="source\blargg\nes_apu\Nes_Namco.cpp" />
+    <ClCompile Include="source\blargg\nes_apu\Nes_Oscs.cpp" />
+    <ClCompile Include="source\blargg\nes_apu\Nes_Vrc6.cpp" />
+    <ClCompile Include="source\blargg\nes_apu\Nonlinear_Buffer.cpp" />
     <ClCompile Include="source\Common.cpp" />
     <ClCompile Include="source\CPU.cpp" />
     <ClCompile Include="source\Debugger.cpp" />
@@ -39,7 +48,19 @@
     <ClInclude Include="extern\imgui\imconfig.h" />
     <ClInclude Include="extern\imgui\imgui.h" />
     <ClInclude Include="extern\imgui\imgui_internal.h" />
+    <ClInclude Include="source\APU.h" />
     <ClInclude Include="source\Array.h" />
+    <ClInclude Include="source\blargg\nes_apu\apu_snapshot.h" />
+    <ClInclude Include="source\blargg\nes_apu\blargg_common.h" />
+    <ClInclude Include="source\blargg\nes_apu\blargg_source.h" />
+    <ClInclude Include="source\blargg\nes_apu\Blip_Buffer.h" />
+    <ClInclude Include="source\blargg\nes_apu\Blip_Synth.h" />
+    <ClInclude Include="source\blargg\nes_apu\Multi_Buffer.h" />
+    <ClInclude Include="source\blargg\nes_apu\Nes_Apu.h" />
+    <ClInclude Include="source\blargg\nes_apu\Nes_Namco.h" />
+    <ClInclude Include="source\blargg\nes_apu\Nes_Oscs.h" />
+    <ClInclude Include="source\blargg\nes_apu\Nes_Vrc6.h" />
+    <ClInclude Include="source\blargg\nes_apu\Nonlinear_Buffer.h" />
     <ClInclude Include="source\Common.h" />
     <ClInclude Include="source\CPU.h" />
     <ClInclude Include="source\Debugger.h" />
@@ -118,14 +139,15 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>.\extern;.\extern\imgui;.\extern\glfw\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <AdditionalIncludeDirectories>.\extern;.\extern\imgui;.\extern\glfw\include;.\source\blargg;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <InlineFunctionExpansion>Default</InlineFunctionExpansion>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>extern\glfw\lib\win32;</AdditionalLibraryDirectories>
-      <AdditionalDependencies>glfw3.lib;opengl32.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>glfw3.lib;opengl32.lib;winmm.lib;xaudio2.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <RandomizedBaseAddress>false</RandomizedBaseAddress>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -135,14 +157,15 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>.\extern;.\extern\imgui;.\extern\glfw\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <AdditionalIncludeDirectories>.\extern;.\extern\imgui;.\extern\glfw\include;.\source\blargg;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <InlineFunctionExpansion>Default</InlineFunctionExpansion>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>extern\glfw\lib\x64;</AdditionalLibraryDirectories>
-      <AdditionalDependencies>glfw3.lib;opengl32.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>glfw3.lib;opengl32.lib;winmm.lib;xaudio2.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <RandomizedBaseAddress>false</RandomizedBaseAddress>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -154,7 +177,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>.\extern;.\extern\imgui;.\extern\glfw\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\extern;.\extern\imgui;.\extern\glfw\include;.\source\blargg;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -162,7 +185,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>extern\glfw\lib\win32;</AdditionalLibraryDirectories>
-      <AdditionalDependencies>glfw3.lib;opengl32.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>glfw3.lib;opengl32.lib;winmm.lib;xaudio2.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -174,7 +197,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>.\extern;.\extern\imgui;.\extern\glfw\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>.\extern;.\extern\imgui;.\extern\glfw\include;.\source\blargg;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -182,7 +205,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>extern\glfw\lib\x64;</AdditionalLibraryDirectories>
-      <AdditionalDependencies>glfw3.lib;opengl32.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>glfw3.lib;opengl32.lib;winmm.lib;xaudio2.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

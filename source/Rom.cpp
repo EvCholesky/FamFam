@@ -58,21 +58,47 @@ void MapMemoryCommon(MemoryMap * pMemmp)
 	auto addrspPpuReg = AddrspMapMemory(pMemmp, 0x2000, 0x2008, aMemdesc, FF_DIM(aMemdesc));	// PPU registers
 	MapMirrored(pMemmp, addrspPpuReg, 0x2008, 0x4000, aMemdesc, FF_DIM(aMemdesc));				// mirrors to 16k
 
-	auto addrspApuIoReg = AddrspMapMemory(pMemmp, 0x4000, 0x4014);	// APU and IO Registers
-
 	auto iMemcbOamDmaReg = IMemcbAllocate(pMemmp, U8ReadOpenBus, WriteOamDmaRegister);
 	auto iMemcbController0 = IMemcbAllocate(pMemmp, U8ReadControllerReg, WriteControllerLatch);
 	auto iMemcbController1 = IMemcbAllocate(pMemmp, U8ReadControllerReg, WriteOpenBus);
 	auto iMemcbOpenBus = IMemcbAllocate(pMemmp, U8ReadOpenBus, WriteOpenBus);
 
+	auto iMemcbApuRom = IMemcbAllocate(pMemmp, U8ReadOpenBus, WriteApuRegister);
+	auto iMemcbApuStatus = IMemcbAllocate(pMemmp, U8ReadApuStatus, WriteApuRegister);
+
 	MemoryDescriptor aMemdescIO[] = {
+		MemoryDescriptor(FMEM_None,		iMemcbApuRom),		//Pulse1  duty/envelope = 0x4000
+		MemoryDescriptor(FMEM_None,		iMemcbApuRom),		//Pulse1  sweep			= 0x4001
+		MemoryDescriptor(FMEM_None,		iMemcbApuRom),		//Pulse1  TimerLow		= 0x4002
+		MemoryDescriptor(FMEM_None,		iMemcbApuRom),		//Pulse1  counter		= 0x4003
+
+		MemoryDescriptor(FMEM_None,		iMemcbApuRom),		//Pulse2  duty/envelope = 0x4004
+		MemoryDescriptor(FMEM_None,		iMemcbApuRom),		//Pulse2  sweep			= 0x4005
+		MemoryDescriptor(FMEM_None,		iMemcbApuRom),		//Pulse2  TimerLow		= 0x4006
+		MemoryDescriptor(FMEM_None,		iMemcbApuRom),		//Pulse2  counter		= 0x4007
+
+		MemoryDescriptor(FMEM_None,		iMemcbApuRom),		//Tri					= 0x4008
+		MemoryDescriptor(FMEM_None,		iMemcbOpenBus),		//						= 0x4009
+		MemoryDescriptor(FMEM_None,		iMemcbApuRom),		//Tri  TimerLow			= 0x400A
+		MemoryDescriptor(FMEM_None,		iMemcbApuRom),		//Tri  counter			= 0x400B
+
+		MemoryDescriptor(FMEM_None,		iMemcbApuRom),		//Noise  envelope		= 0x400C
+		MemoryDescriptor(FMEM_None,		iMemcbOpenBus),		//						= 0x400D
+		MemoryDescriptor(FMEM_None,		iMemcbApuRom),		//Noise  loop,period	= 0x400E
+		MemoryDescriptor(FMEM_None,		iMemcbApuRom),		//Noise  counter		= 0x400F
+
+		MemoryDescriptor(FMEM_None,		iMemcbApuRom),		//DMC					= 0x4010
+		MemoryDescriptor(FMEM_None,		iMemcbApuRom),		//DMC					= 0x4011
+		MemoryDescriptor(FMEM_None,		iMemcbApuRom),		//DMC					= 0x4012
+		MemoryDescriptor(FMEM_None,		iMemcbApuRom),		//DMC					= 0x4013
+
 		MemoryDescriptor(FMEM_None,		iMemcbOamDmaReg),	//OAMDMA				= 0x4014
-		MemoryDescriptor(FMEM_None,		iMemcbOpenBus),		//SND_CHN(unimplemented)= 0x4015
+		MemoryDescriptor(FMEM_None,		iMemcbApuStatus),	//Apu status			= 0x4015
 		MemoryDescriptor(FMEM_None,		iMemcbController0),	//JOY1					= 0x4016
 		MemoryDescriptor(FMEM_None,		iMemcbController1),	//JOY2			 		= 0x4017
 	};
 
-	(void)AddrspMapMemory(pMemmp, 0x4014, 0x4018, aMemdescIO, FF_DIM(aMemdescIO));
+	(void)AddrspMapMemory(pMemmp, 0x4000, 0x4018, aMemdescIO, FF_DIM(aMemdescIO));
 	(void)AddrspMarkUnmapped(pMemmp, 0x4018, 0x4020);				// unused APU and IO test space
 }
 
@@ -144,11 +170,6 @@ struct RomPage // rpage
 	int		m_iB;
 	size_t	m_cB;
 };
-
-static inline bool FAreSamePage(RomPage * rpageA, RomPage * rpageB)
-{
-	return rpageA->m_iB == rpageB->m_iB && rpageA->m_cB == rpageB->m_cB;
-}
 
 static inline void ComputePrgPagesMmc1(u8 * pBReg, Cart * pCart, RomPage * pRpage0, RomPage * pRpage1)
 {
@@ -238,7 +259,7 @@ void UpdateBanks(Famicom * pFam, MapperMMC1 * pMapr1)
 		pCart->m_aryAddrInstruct.Clear();
 
 		pCart->m_addrPrgMappedMin = rpagePrg0.m_iB;
-		pCart->m_addrPrgMappedMax = rpagePrg0.m_iB + rpagePrg0.m_cB;
+		pCart->m_addrPrgMappedMax = rpagePrg0.m_iB + int(rpagePrg0.m_cB);
 
 		CopyAB(&pCart->m_pBPrgRom[rpagePrg0.m_iB], &pMemmp->m_aBRaw[0x8000], rpagePrg0.m_cB);
 		pCart->m_fRecomputeAddrInstruct = true;
@@ -249,7 +270,7 @@ void UpdateBanks(Famicom * pFam, MapperMMC1 * pMapr1)
 			CopyAB(&pCart->m_pBPrgRom[rpagePrg1.m_iB], &pMemmp->m_aBRaw[0xC000], rpagePrg1.m_cB);
 
 			pCart->m_addrPrgMappedMin = rpagePrg1.m_iB;
-			pCart->m_addrPrgMappedMax = rpagePrg1.m_iB + rpagePrg0.m_cB;
+			pCart->m_addrPrgMappedMax = rpagePrg1.m_iB + int(rpagePrg0.m_cB);
 		}
 	}
 
@@ -378,7 +399,6 @@ bool FTryLoadRomFromFile(const char * pChzFilename, Cart * pCart, Famicom * pFam
         return false;
     }
 
-   fclose(pFile);
    return FTryLoadRom(pB, cB, pCart, pFam, fpow);
 }
 

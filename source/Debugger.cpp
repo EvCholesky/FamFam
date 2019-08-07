@@ -81,7 +81,7 @@ bool FTryParseU32(const char * pChz, u32 * pN)
 	else
 	{
 		// decimal literal
-		while (pChzIt != '\0')
+		while (*pChzIt != '\0')
 		{
 			if ((*pChzIt >= '0') & (*pChzIt <= '9'))
 			{

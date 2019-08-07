@@ -374,12 +374,12 @@ RGBA RgbaFromHwcol(HWCOL hwcol)
 	return s_mpIcolRgba[hwcol];
 }
 
-void MapPpuMemorySpan(Ppu * pPpu, u16 addrMin, u8 * pB, int cB)
+void MapPpuMemorySpan(Ppu * pPpu, u16 addrMin, u8 * pB, size_t cB)
 {
-	int cSpan = cB;
+	size_t cSpan = cB;
 	u8 ** ppBMap = &pPpu->m_aPVramMap[addrMin];
 	u8 * pBTarget = pB;
-	for (int iSpan = 0; iSpan < cSpan; ++iSpan)
+	for (size_t iSpan = 0; iSpan < cSpan; ++iSpan)
 	{
 		*ppBMap = pBTarget;
 		pBTarget += 1;

@@ -89,6 +89,7 @@ int main(int cpChzArg, const char * apChzArg[])
         ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
 		EndTimer(TVAL_ImguiRender);
 
+		UpdatePlatformAudio(&g_fam, &g_plat.m_plaud);
 
 		SwapBuffers(&g_plat);
 		PollInput(&g_plat, &g_fam);

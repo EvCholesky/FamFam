@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <mmsystem.h>
+#include <stdio.h>
 
 #include "Cpu.h"
 #include "imgui.h"
@@ -7,6 +8,9 @@
 #include "glfw/include/GLFW/glfw3.h"
 #include "glfw/deps/GL/glext.h"
 
+#include "nes_apu/Blip_Buffer.h"
+
+#include <xaudio2.h>
 
 KeyPressState g_keyps;
 Platform g_plat;
@@ -527,4 +531,163 @@ void UploadTexture(Platform * pPlat, Texture * pTex)
 		GL_RGB,					// format
 		GL_UNSIGNED_BYTE,		// type
 		pTex->m_pB);
+}
+
+class VoiceCallback : public IXAudio2VoiceCallback  // tag = voicecb
+{
+public:
+							VoiceCallback() 
+							:m_pFam(nullptr)
+							,m_hBufferEndEvent(CreateEvent(nullptr, FALSE, FALSE, nullptr)) 
+							,m_pSrcvoice(nullptr)
+							,m_cBSample(0)
+								{ ; }
+							~VoiceCallback()
+								{ CloseHandle(m_hBufferEndEvent); }
+
+	// Called when the voice has just finished playing a contiguous audio stream.
+	void STDMETHODCALLTYPE	OnStreamEnd()
+								{ SetEvent(m_hBufferEndEvent); }
+
+    void STDMETHODCALLTYPE	OnVoiceProcessingPassEnd()  override
+								{ ; }
+    void STDMETHODCALLTYPE	OnVoiceProcessingPassStart(UINT32 cSamplesRequired) override
+								{ ; }
+
+    void STDMETHODCALLTYPE	OnBufferEnd(void * pBufferContext) override
+								{
+									XAUDIO2_VOICE_STATE voices;
+FF_ASSERT(m_pSrcvoice == g_plat.m_plaud.m_pSrcvoice, "voice mismatch");
+									m_pSrcvoice->GetState(&voices);
+
+									if (voices.BuffersQueued < 1) 
+									{
+										if (m_pFam->m_apu.m_pBlipb->samples_avail()) 
+										{
+											auto pNCookie = (u64*)&m_aSamp[s_cSampBuffer];
+											*pNCookie = 0xFACEFACEFACEFACE;
+											s32 cSampleRead = m_pFam->m_apu.m_pBlipb->read_samples(m_aSamp, s_cSampBuffer, false);
+
+											XAUDIO2_BUFFER buffer = { 0 };
+											buffer.AudioBytes = cSampleRead * m_cBSample;
+											buffer.LoopCount = 0;
+											buffer.pAudioData = (BYTE *)&m_aSamp;
+											buffer.Flags = voices.BuffersQueued == 0 ? XAUDIO2_END_OF_STREAM : 0;
+
+											FF_ASSERT(*pNCookie == 0xFACEFACEFACEFACE, "stomp 1");
+											(FAILED(m_pSrcvoice->SubmitSourceBuffer(&buffer)));
+											FF_ASSERT(*pNCookie == 0xFACEFACEFACEFACE, "stomp 2");
+										}
+									}
+								}
+    void STDMETHODCALLTYPE	OnBufferStart(void * pBufferContext) override
+								{ ; }
+    void STDMETHODCALLTYPE	OnLoopEnd(void * pBufferContext) override
+								{ ; }
+    void STDMETHODCALLTYPE	OnVoiceError(void * pBufferContext, HRESULT Error) override
+								{ printf("Voice Error\n"); }
+
+    static const int s_cSampBuffer = 1024;
+
+	Famicom *				m_pFam;
+    HANDLE					m_hBufferEndEvent;
+    IXAudio2SourceVoice *	m_pSrcvoice;
+
+    u32						m_cBSample;
+    s16						m_aSamp[s_cSampBuffer + 8];
+};
+
+void InitPlatformAudio(Famicom * pFam, PlatformAudio * pPlaud)
+{
+    static const int s_cChannel = 1;
+    static const int s_cSamplePerSec = 44100;
+
+	HRESULT hres;
+	if (FAILED(hres = CoInitialize(nullptr)))
+		return;
+
+	IXAudio2 * pXaudio;
+	if (FAILED(hres = XAudio2Create(&pXaudio)))
+	{
+		CoUninitialize();
+		return;
+	}
+
+
+	IXAudio2MasteringVoice * pMasterv;
+	if (FAILED(hres = pXaudio->CreateMasteringVoice(&pMasterv)))
+	{
+		CoUninitialize();
+		return;
+	}
+
+	pPlaud->m_iASamp = 0;
+
+	XAUDIO2_DEBUG_CONFIGURATION debugcfg = {0};
+	debugcfg.TraceMask = XAUDIO2_LOG_ERRORS | XAUDIO2_LOG_WARNINGS;
+	pXaudio->SetDebugConfiguration(&debugcfg);
+
+	WAVEFORMATEX wavefmt = { 0 };
+	wavefmt.wBitsPerSample = PlatformAudio::s_cBitSample;
+	wavefmt.nAvgBytesPerSec = (PlatformAudio::s_cBitSample / 8) * s_cChannel * s_cSamplePerSec;
+	wavefmt.nChannels = s_cChannel;
+	wavefmt.nBlockAlign = s_cChannel * (PlatformAudio::s_cBitSample / 8);
+	wavefmt.nSamplesPerSec = s_cSamplePerSec;
+	wavefmt.wFormatTag = WAVE_FORMAT_PCM;
+
+	VoiceCallback * pVoicecb = new VoiceCallback;
+	pPlaud->m_pVoicecb = pVoicecb;
+
+	if (FAILED(hres = pXaudio->CreateSourceVoice( &pPlaud->m_pSrcvoice, &wavefmt, 0, XAUDIO2_DEFAULT_FREQ_RATIO, pVoicecb)))
+		return;
+
+	pVoicecb->m_pFam = pFam;
+	pVoicecb->m_pSrcvoice = pPlaud->m_pSrcvoice;
+	pVoicecb->m_cBSample = (PlatformAudio::s_cBitSample / 8);
+
+	u64 * pSampEnd = (u64*)&g_plat.m_plaud.m_aSamp[PlatformAudio::s_cAudioBuffer * PlatformAudio::s_cSampBuffer];
+	*pSampEnd = 0xBEEFFACEBEEFFACE;
+
+	if (FAILED(pPlaud->m_pSrcvoice->Start()))
+		return;
+}
+
+void ShutdownPlatformAudio(PlatformAudio * pPlaud)
+{
+	if (pPlaud->m_pVoicecb)
+	{
+		delete pPlaud->m_pVoicecb;
+	}
+
+	CoUninitialize();
+}
+
+void UpdatePlatformAudio(Famicom * pFam, PlatformAudio * pPlaud)
+{
+	XAUDIO2_VOICE_STATE voiceState;
+	pPlaud->m_pSrcvoice->GetState( &voiceState );
+
+	const s32 cSampAvailable = pFam->m_apu.m_pBlipb->samples_avail();
+	if ( cSampAvailable ) 
+	{
+		s16 * pSamp = &pPlaud->m_aSamp[PlatformAudio::s_cSampBuffer * pPlaud->m_iASamp];
+		const s32 cSamples = pFam->m_apu.m_pBlipb->read_samples( pSamp, PlatformAudio::s_cSampBuffer, false );
+
+		u64 * pSampEnd = (u64*)&g_plat.m_plaud.m_aSamp[PlatformAudio::s_cAudioBuffer * PlatformAudio::s_cSampBuffer];
+		FF_ASSERT(*pSampEnd == 0xBEEFFACEBEEFFACE, "memory stomp");
+		
+		XAUDIO2_BUFFER buffer = { 0 };
+		buffer.AudioBytes = cSamples * (PlatformAudio::s_cBitSample / 8);
+		buffer.LoopCount = 0;
+		buffer.pAudioData = (BYTE *)pSamp;
+		buffer.Flags = voiceState.BuffersQueued == 0 ? XAUDIO2_END_OF_STREAM : 0;
+
+		FAILED( pPlaud->m_pSrcvoice->SubmitSourceBuffer( &buffer ) );
+		if (cSampAvailable >= PlatformAudio::s_cSampBuffer)
+		{
+			printf("Audio buffer[%d] overflow: %u / %u samples\n", pPlaud->m_iASamp, cSampAvailable, PlatformAudio::s_cSampBuffer);
+		}
+
+		pPlaud->m_iASamp = (pPlaud->m_iASamp + 1) % PlatformAudio::s_cAudioBuffer;
+	}
 }

@@ -44,6 +44,7 @@ void FFAssertHandler(const char* pChzFile, u32 line, const char* pChzCondition, 
 		va_list ap;
 		va_start(ap, pChzMessage);
 		vprintf(pChzMessage, ap);
+		va_end(ap);
 		printf("\n");
 	}
 }
@@ -74,6 +75,7 @@ void ShowError(const char* pChzFormat, ...)
 	va_list ap;
 	va_start(ap, pChzFormat);
 	ShowErrorV(pChzFormat, ap);
+	va_end(ap);
 }
 
 void ShowInfoV(const char * pChzFormat, va_list ap)
@@ -87,5 +89,6 @@ void ShowInfo(const char * pChzFormat, ...)
 	va_list ap;
 	va_start(ap, pChzFormat);
 	ShowInfoV(pChzFormat, ap);
+	va_end(ap);
 }
 

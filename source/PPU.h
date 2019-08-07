@@ -54,13 +54,12 @@ union TickPpu
 inline void IncrementTickp(TickPpu * pTickp, u32 c)
 {
 	pTickp->m_cSubframe += c;
-	if (pTickp->m_cSubframe > s_dTickpPerFrame)
+	if (pTickp->m_cSubframe >= s_dTickpPerFrame)
 	{
 		pTickp->m_cSubframe -= s_dTickpPerFrame;
 		++pTickp->m_cFrame;
 	}
 }
-
 inline u64 TickpU64(const TickPpu * pTickp)
 {
 	return u64(pTickp->m_cSubframe) + u64(pTickp->m_cFrame) * s_dTickpPerFrame;
@@ -70,6 +69,7 @@ inline s64 CFrameFromTickp(TickPpu * pTickp)
 { 
 	return pTickp->m_cFrame;
 }
+
 inline TickPpu TickpFromFrameSubframe(u64 cFrame, u64 cSubframe)
 {
 	TickPpu tickp;
