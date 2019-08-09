@@ -13,7 +13,6 @@ struct Famicom;
 struct GLFWwindow;
 
 struct IXAudio2SourceVoice;
-class VoiceCallback;
 
 enum KEYCODE : s16
 {
@@ -211,8 +210,7 @@ struct PlatformJoystick // tag = pljoy
 struct PlatformAudio // tag = plaud
 {
 				PlatformAudio()
-				:m_pVoicecb(nullptr)
-				,m_pSrcvoice(nullptr)
+				:m_pSrcvoice(nullptr)
 				,m_iASamp(0)
 					{ ; }
 
@@ -220,7 +218,6 @@ struct PlatformAudio // tag = plaud
 	static const u32 s_cSampBuffer = 32000;
 	static const u32 s_cAudioBuffer = 3;
 
-    VoiceCallback *  		m_pVoicecb;
     IXAudio2SourceVoice *	m_pSrcvoice;
     s16 					m_aSamp[s_cAudioBuffer * s_cSampBuffer + 8];
     u8						m_iASamp;	// which is the current buffer (in the triple buffer)
@@ -238,6 +235,9 @@ struct Platform // tag = plat
 	s64					m_mpTvalCTickStart[TVAL_Max];	// when was StartTimer called for a given TVAL
 	s64					m_mpTvalCTick[TVAL_Max];	// total ticks this frame
 	float				m_mpTvalDTFrame[TVAL_Max];		// last frame's timings - used for reporting
+
+	static const int s_cHistorySample = 60;
+	float				m_aTHistory[s_cHistorySample];
 
 	PlatformAudio		m_plaud;
 	PlatformJoystick	m_aPljoy[s_cJoystickMax];

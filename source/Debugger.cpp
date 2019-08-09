@@ -574,9 +574,16 @@ void UpdateScreenWindow(Debugger * pDebug, Platform * pPlat, Famicom * pFam)
 	{
 		ImGui::SetCursorPosX(x); 
 		ImGui::Text("%-3.2f", DMsecFrame(pPlat, TVAL(tval)));
-		ImGui::SameLine();
+
+		if (tval+1 < TVAL_Max)
+		{
+			ImGui::SameLine();
+		}
+
 		x += s_dXTimer;
 	}
+
+	ImGui::PlotHistogram("", pPlat->m_aTHistory, FF_DIM(pPlat->m_aTHistory), 0, NULL, 0.0f, 1.0f / 20.0f, ImVec2(0,80));
 
     ImGui::End();
 }
