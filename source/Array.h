@@ -557,3 +557,88 @@ public:
 						paryTOther->m_cMax = m_cMaxTemp;
 					}
 };
+
+
+
+struct ByteStream // tag = bstr
+{
+				ByteStream()
+				:m_pB(nullptr)
+				,m_cB(0)
+				,m_cBMax(0)
+					{ ; }
+				~ByteStream()
+					{
+						if (m_pB)
+						{
+							Resize(0);
+						}
+					}
+
+	bool		FIsEmpty() const
+					{ return m_cB == 0; }
+	void		Clear()
+					{ Resize(0); }
+	size_t		CB() const
+					{ return m_cB; }
+	void		Swap(ByteStream * pBstr)
+					{
+						ffSwap(m_pB, pBstr->m_pB);
+						ffSwap(m_cB, pBstr->m_cB);
+						ffSwap(m_cBMax, pBstr->m_cBMax);
+					}
+	u8 *		PBAppend(size_t cBAdded)
+					{
+						EnsureSize(m_cB + cBAdded);
+						u8 * pB = &m_pB[m_cB];
+						m_cB += cBAdded;
+						return pB;
+					}
+
+	void		Resize(size_t cBMaxNew)
+					{
+						if (cBMaxNew == m_cBMax)
+							return;
+
+						u8 * pBOld = m_pB;
+						if (cBMaxNew < m_cBMax)
+						{
+							m_cB = cBMaxNew;
+						}
+
+						if (cBMaxNew > 0)
+						{
+							m_pB = (u8 *)malloc(cBMaxNew);
+
+							if (pBOld)
+							{
+								auto cBMin = (m_cBMax < cBMaxNew) ? m_cBMax : cBMaxNew;
+								memcpy(m_pB, pBOld, cBMin);
+							}
+						}
+						else
+						{
+							m_pB = nullptr;
+						}
+
+						if (pBOld)
+							free(pBOld);
+						m_cBMax = cBMaxNew;
+					}
+
+	void		EnsureSize(size_t cB)
+					{
+						if (cB > m_cBMax) 
+						{
+							size_t cBNew = ffMax(m_cBMax * 2, cB); 
+							Resize(cBNew);
+						}
+					}
+
+	u8 *		m_pB;
+	size_t		m_cB;
+	size_t		m_cBMax;
+};
+
+
+

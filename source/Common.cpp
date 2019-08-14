@@ -91,4 +91,28 @@ void ShowInfo(const char * pChzFormat, ...)
 	ShowInfoV(pChzFormat, ap);
 	va_end(ap);
 }
+// simple hash function with meh avalanching, works for now. replace with MUM hash or xxHash
+u32 HvFromPBFVN(const void * pV, size_t cB)
+{
+	auto pB = (u8*)pV;
+    u32 hv = 2166136261;
+
+	for (size_t iB=0; iB < cB; ++iB)
+    {
+        hv = (hv * 16777619) ^ pB[iB];
+    }
+
+    return hv;
+}
+
+u32 HvConcatPBFVN(u32 hv, const void * pV, size_t cB)
+{
+	auto pB = (u8*)pV;
+	for (size_t iB=0; iB < cB; ++iB)
+    {
+        hv = (hv * 16777619) ^ pB[iB];
+    }
+
+    return hv;
+}
 

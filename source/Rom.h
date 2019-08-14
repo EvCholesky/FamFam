@@ -95,6 +95,8 @@ struct Cart
 					:m_mapperk(MAPPERK_Nil)
 					,m_pHead(nullptr)
 					,m_aryAddrInstruct(1014)
+					,m_pChzName(nullptr)
+					,m_hvRom(0)
 					,m_pBPrgRom(nullptr)
 					,m_pBChrRom(nullptr)
 					,m_cBPrgRom(0)
@@ -111,6 +113,9 @@ struct Cart
 	DynAry<u16>		m_aryAddrInstruct;	// cached starting address for each instruction (for disasembly window)
 										// (one entry per debugger line - to allow clipping the offscreen instructions)
 
+	const char *	m_pChzName;
+	u32				m_hvRom;			// hash of ROM contents to check for state equivalence
+
 	u8 *			m_pBPrgRom;
 	u8 *			m_pBChrRom;
 	int				m_cBPrgRom;
@@ -126,5 +131,5 @@ struct Cart
 void AppendAddrOffset(Ppu * pPpu, DynAry<u16> * pAryAddrInstruct, u16 addrBase, int cB);
 
 bool FTryLoadRomFromFile(const char * pChzFilename, Cart * pCart, Famicom * pFam, FPOW fpow);
-bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart, Famicom * pFam, FPOW fpow);
+bool FTryLoadRom(const char * pChzName, u8 * pB, u64 cB, Cart * pCart, Famicom * pFam, FPOW fpow);
 void CloseRom(Cart * pCart);

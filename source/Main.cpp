@@ -12,6 +12,32 @@
 
 s64 g_cTickPerSecond = 1;
 
+void UpdateSaveState(Platform * pPlat, Famicom * pFam, SaveOutStream * pSos)
+{
+	if (pPlat->m_fRequestedSaveState)
+	{
+		pPlat->m_fRequestedSaveState = false;
+
+		if (!pSos->FIsEmpty())
+		{
+			pSos->Clear();
+		}
+
+		WriteSave(pSos, pFam);
+	}
+
+	if (pPlat->m_fRequestedLoadState)
+	{
+		pPlat->m_fRequestedLoadState = false;
+
+		SaveInStream sis(pSos);
+		if (!FTryReadSave(&sis, pFam))
+		{
+			printf("failed restoring save state\n");
+		}
+	}
+}
+
 int main(int cpChzArg, const char * apChzArg[])
 {
 	static const int s_nHzTarget = 60;
@@ -51,6 +77,7 @@ int main(int cpChzArg, const char * apChzArg[])
 //	if (!FTryAllLogTests())
 //		return 0;
 
+	SaveOutStream sos;
 	Debugger debug;
 	InitDebugger(&debug, &g_plat);
 
@@ -94,6 +121,8 @@ int main(int cpChzArg, const char * apChzArg[])
 		SwapBuffers(&g_plat);
 		PollInput(&g_plat, &g_fam);
 		EndTimer(TVAL_TotalFrame);
+
+		UpdateSaveState(&g_plat, &g_fam, &sos);
 
 		WaitUntilFrameEnd(&g_plat.m_pltime, cTickLast);
 		FrameEndTimers(&g_plat);

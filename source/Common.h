@@ -21,6 +21,7 @@ typedef ptrdiff_t sSize;
 
 template <typename T> T ffMin(T a, T b)						{ return a < b ? a : b; }
 template <typename T> T ffMax(T a, T b)						{ return a > b ? a : b; }
+template <typename T> T ffSwap(T & a, T & b)				{ T temp = a; a = b; b = temp; }
 
 enum EDGES : u8	// EDGE State
 {
@@ -319,3 +320,6 @@ void ShowErrorV(const char * pChzFormat, va_list ap);
 void ShowError(const char * pChzFormat, ...);
 void ShowInfoV(const char * pChzFormat, va_list ap);
 void ShowInfo(const char * pChzFormat, ...);
+
+u32 HvFromPBFVN(const void * pV, size_t cB);
+u32 HvConcatPBFVN(u32 hv, const void * pV, size_t cB);

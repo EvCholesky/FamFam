@@ -438,6 +438,8 @@ void SetupDefaultInputMapping(Famicom * pFam)
 
 Platform::Platform()
 :m_pGlfwin(nullptr)
+,m_fRequestedSaveState(false)
+,m_fRequestedLoadState(false)
 {
 	ClearTimers(this); 
 }
@@ -499,8 +501,24 @@ void SwapBuffers(Platform * pPlat)
 
 void PollInput(Platform * pPlat, Famicom * pFam)
 {
+	for (int keycode = 0; keycode < KEYCODE_Max; ++keycode)
+	{
+		g_keyps.m_mpKeycodeEdges[keycode] = (g_keyps.m_mpKeycodeEdges[keycode] < EDGES_Hold) ? EDGES_Off : EDGES_Hold;
+	}
+
 	glfwPollEvents();
 	PollJoystickInput(pPlat);
+
+	if (pFam->m_pKeyps->m_mpKeycodeEdges[KEYCODE_F1] == EDGES_Press)
+	{
+		pPlat->m_fRequestedSaveState = true;
+	}
+
+	if (pFam->m_pKeyps->m_mpKeycodeEdges[KEYCODE_F4] == EDGES_Press)
+	{
+		pPlat->m_fRequestedLoadState = true;
+	}
+
 }
 
 void ShutdownPlatform(Platform * pPlat)

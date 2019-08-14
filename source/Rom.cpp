@@ -399,11 +399,16 @@ bool FTryLoadRomFromFile(const char * pChzFilename, Cart * pCart, Famicom * pFam
         return false;
     }
 
-   return FTryLoadRom(pB, cB, pCart, pFam, fpow);
+   return FTryLoadRom(pChzFilename, pB, cB, pCart, pFam, fpow);
 }
 
-bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart, Famicom * pFam, FPOW fpow)
+bool FTryLoadRom(const char * pChzName, u8 * pB, u64 cB, Cart * pCart, Famicom * pFam, FPOW fpow)
 {
+	auto cBName = strlen(pChzName) + 1;
+	char * pChzNameCopy = new char[cBName];
+	memcpy(pChzNameCopy, pChzName, cBName);	
+	pCart->m_pChzName = pChzNameCopy;
+
 	SetPowerUpPreLoad(pFam, fpow);
 	RomHeader * pHead = (RomHeader *)pB;
 
@@ -414,6 +419,7 @@ bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart, Famicom * pFam, FPOW fpow)
 	}
 	
 	pCart->m_pHead = pHead;
+	u32 hvRom = HvFromPBFVN(pHead, sizeof(*pHead));
 
 	const RomFlags & romf  = pHead->m_romf;
 	const RomFlagsEx & romfx  = pHead->m_romfx;
@@ -437,6 +443,8 @@ bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart, Famicom * pFam, FPOW fpow)
 		//u32 cPagePrgRam = (pHead->m_romfx.m_nBits & 0xFF0000) >> 16;
 		//pCart->m_cBPrgRam = (cPagePrgRam == 0) ? FF_KIB(8) : FF_KIB(cPagePrgRam);
 		pCart->m_cBPrgRam = FF_KIB(8);
+
+		pCart->m_cBChrRam = (pHead->m_cPageChrRom == 0) ? FF_KIB(8) : 0;
 	}
 
 	pCart->m_cBPrgRom = CPageRom(sizePrgRomMSB, pHead->m_cPagePrgRom) * 16 * 1024;
@@ -449,9 +457,12 @@ bool FTryLoadRom(u8 * pB, u64 cB, Cart * pCart, Famicom * pFam, FPOW fpow)
 
 	// PRG rom data
 	pCart->m_pBPrgRom = pBTrainer + cBTrainer;
+	hvRom = HvConcatPBFVN(hvRom, pCart->m_pBPrgRom, pCart->m_cBPrgRom);
 
 	// Chr rom data
 	pCart->m_pBChrRom = pCart->m_pBPrgRom + pCart->m_cBPrgRom;
+	hvRom = HvConcatPBFVN(hvRom, pCart->m_pBChrRom, pCart->m_cBChrRom);
+	pCart->m_hvRom = hvRom;
 
 	if (!FTrySetupMemoryMapper(pFam, pCart))
 	{

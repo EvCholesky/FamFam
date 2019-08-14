@@ -235,6 +235,8 @@ struct Platform // tag = plat
 	s64					m_mpTvalCTickStart[TVAL_Max];	// when was StartTimer called for a given TVAL
 	s64					m_mpTvalCTick[TVAL_Max];	// total ticks this frame
 	float				m_mpTvalDTFrame[TVAL_Max];		// last frame's timings - used for reporting
+	bool				m_fRequestedSaveState;
+	bool				m_fRequestedLoadState;
 
 	static const int s_cHistorySample = 60;
 	float				m_aTHistory[s_cHistorySample];

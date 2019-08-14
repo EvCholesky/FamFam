@@ -200,7 +200,7 @@ u8 U8ReadControllerReg(Famicom * pFam, u16 addr)
 
 	EDGES edges = pGpad->m_mpButkEdges[pGpad->m_iBShift++];
 
-	u8 b = (edges >= EDGES_Press) ? 1 : 0;
+	u8 b = (edges >= EDGES_Hold) ? 1 : 0;
 	return b;
 }
 
@@ -2110,3 +2110,352 @@ void ExecuteFamicomFrame(Famicom * pFam)
 	EndTimer(TVAL_UpdateApu);
 }
  
+SaveInStream::SaveInStream(const SaveOutStream * pSos)
+:m_iB(0)
+{
+	u8 * pB = m_bstr.PBAppend(pSos->m_bstr.CB());
+	memcpy(pB, pSos->m_bstr.m_pB, pSos->m_bstr.CB());
+}
+
+static const u32 s_nCheckFormat = 0xDEADBEEF;
+void CheckFormat(SaveOutStream * pSos)
+{
+	WriteU32(pSos, s_nCheckFormat);
+}
+
+void CheckFormat(SaveInStream * pSis)
+{
+	u32 n = U32Read(pSis);
+	FF_ASSERT(n == s_nCheckFormat, "Packet format mismatch");
+}
+
+void WriteU32(SaveOutStream * pSos, u32 n)
+{
+	u32 * pN = (u32*)pSos->m_bstr.PBAppend(sizeof(n));
+	*pN = n;
+}
+
+void WriteS16(SaveOutStream * pSos, s16 n)
+{
+	s16 * pN = (s16*)pSos->m_bstr.PBAppend(sizeof(n));
+	*pN = n;
+}
+
+void WriteS64(SaveOutStream * pSos, s64 n)
+{
+	s64 * pN = (s64*)pSos->m_bstr.PBAppend(sizeof(n));
+	*pN = n;
+}
+
+void WritePB(SaveOutStream * pSos, const void * pB, size_t cB)
+{
+	u8 * pBDst = pSos->m_bstr.PBAppend(cB);
+	memcpy(pBDst, pB, cB);
+}
+
+template <typename T>
+void WriteT(SaveOutStream * pSos, T * pT)
+{
+	WritePB(pSos, pT, sizeof(T));
+}
+
+u32 U32Read(SaveInStream * pSis)
+{
+	u32 * pN = (u32*)&pSis->m_bstr.m_pB[pSis->m_iB];
+	pSis->m_iB += sizeof(u32);
+	FF_ASSERT(pSis->m_iB <= pSis->m_bstr.m_cBMax, "read past the end of saveInStream");
+	return *pN;
+}
+
+s16 S16Read(SaveInStream * pSis)
+{
+	s16 * pN = (s16*)&pSis->m_bstr.m_pB[pSis->m_iB];
+	pSis->m_iB += sizeof(s16);
+	FF_ASSERT(pSis->m_iB <= pSis->m_bstr.m_cBMax, "read past the end of saveInStream");
+	return *pN;
+}
+
+s64 S64Read(SaveInStream * pSis)
+{
+	s64 * pN = (s64*)&pSis->m_bstr.m_pB[pSis->m_iB];
+	pSis->m_iB += sizeof(s64);
+	FF_ASSERT(pSis->m_iB <= pSis->m_bstr.m_cBMax, "read past the end of saveInStream");
+	return *pN;
+}
+
+void ReadPB(SaveInStream * pSis, void * pB, size_t cB)
+{
+	u8 * pBSrc = (u8*)&pSis->m_bstr.m_pB[pSis->m_iB];
+	memcpy(pB, pBSrc, cB);
+	pSis->m_iB += cB;
+	FF_ASSERT(pSis->m_iB <= pSis->m_bstr.m_cBMax, "read past the end of saveInStream");
+}
+
+template <typename T>
+void ReadT(SaveInStream * pSis, T * pT)
+{
+	ReadPB(pSis, pT, sizeof(T));
+}
+
+void WriteString(SaveOutStream * pSos, const char* pChz)
+{
+	u32 cB = U32Coerce(strlen(pChz));
+	WriteU32(pSos, cB);
+	WritePB(pSos, pChz, cB);
+}
+
+const char * PChzReadString(SaveInStream * pSis)
+{
+	u32 cB = U32Read(pSis);
+	if (cB <= 0)
+		return nullptr;
+
+	char * pChz = new char [cB+1];
+	ReadPB(pSis, pChz, cB);
+	pChz[cB] = '\0';
+	return pChz;
+}
+
+void WritePpu(SaveOutStream * pSos, Ppu * pPpu)
+{
+	WriteT(pSos, &pPpu->m_pctrl);
+	WriteT(pSos, &pPpu->m_pmask);
+	WriteT(pSos, &pPpu->m_pstatus);
+
+	WritePB(pSos, pPpu->m_aOam, sizeof(pPpu->m_aOam));
+	WritePB(pSos, pPpu->m_aBCieram, sizeof(pPpu->m_aBCieram));
+	WritePB(pSos, pPpu->m_aBPalette, sizeof(pPpu->m_aBPalette));
+
+	WriteT(pSos, &pPpu->m_addrV);
+	WriteT(pSos, &pPpu->m_addrTemp);
+	WriteT(pSos, &pPpu->m_dXScrollFine);
+	WriteT(pSos, &pPpu->m_bOamAddr);
+	WriteT(pSos, &pPpu->m_bReadBuffer);
+	WriteT(pSos, &pPpu->m_fIsFirstAddrWrite);
+}
+
+void ReadPpu(SaveInStream * pSis, Ppu * pPpu)
+{
+	ReadT(pSis, &pPpu->m_pctrl);
+	ReadT(pSis, &pPpu->m_pmask);
+	ReadT(pSis, &pPpu->m_pstatus);
+
+	ReadPB(pSis, pPpu->m_aOam, sizeof(pPpu->m_aOam));
+	ReadPB(pSis, pPpu->m_aBCieram, sizeof(pPpu->m_aBCieram));
+	ReadPB(pSis, pPpu->m_aBPalette, sizeof(pPpu->m_aBPalette));
+
+	ReadT(pSis, &pPpu->m_addrV);
+	ReadT(pSis, &pPpu->m_addrTemp);
+	ReadT(pSis, &pPpu->m_dXScrollFine);
+	ReadT(pSis, &pPpu->m_bOamAddr);
+	ReadT(pSis, &pPpu->m_bReadBuffer);
+	ReadT(pSis, &pPpu->m_fIsFirstAddrWrite);
+}
+
+void WritePpuCommandList(SaveOutStream * pSos, PpuCommandList * pPpucl)
+{
+	FF_ASSERT(pPpucl->m_aryPpucmd.FIsEmpty(), "we could write this out but I'm not sure we need to");
+}
+
+void ReadPpuCommandList(SaveInStream * pSis, PpuCommandList * pPpucl)
+{
+
+}
+
+void WriteInput(SaveOutStream * pSos, Famicom * pFam)
+{
+	auto pFamin = &pFam->m_famin;
+	WriteT(pSos, &pFamin->m_nControllerLatch);
+
+	Gamepad * pGpadMax = FF_PMAX(pFamin->m_aGpad);
+	for (Gamepad * pGpad = pFamin->m_aGpad; pGpad != pGpadMax; ++pGpad)
+	{
+		WriteT(pSos, &pGpad->m_fIsConnected);
+		if (!pGpad->m_fIsConnected)
+			continue;
+		WritePB(pSos, pGpad->m_mpButkEdges, sizeof(pGpad->m_mpButkEdges));
+	}
+
+	KeyPressState * pKeyps = pFam->m_pKeyps;
+	for (s16 keycode = 0; keycode < KEYCODE_Max; ++keycode)	
+	{
+		EDGES edges = pKeyps->m_mpKeycodeEdges[keycode];
+		if (edges == EDGES_Off)
+			continue;
+
+		printf(" -> %d:%d\n", keycode, edges);
+		WriteS16(pSos, keycode);
+		WriteT(pSos, &edges);
+	}
+	WriteS16(pSos, KEYCODE_Nil);
+}
+
+void ReadInput(SaveInStream * pSis, Famicom * pFam)
+{
+	auto pFamin = &pFam->m_famin;
+	ReadT(pSis, &pFamin->m_nControllerLatch);
+
+	Gamepad * pGpadMax = FF_PMAX(pFamin->m_aGpad);
+	for (Gamepad * pGpad = pFamin->m_aGpad; pGpad != pGpadMax; ++pGpad)
+	{
+		bool fIsConnected; 
+		ReadT(pSis, &fIsConnected);
+		if (!fIsConnected)
+			continue;
+		ReadPB(pSis, pGpad->m_mpButkEdges, sizeof(pGpad->m_mpButkEdges));
+	}
+
+	EDGES edges;
+	KeyPressState * pKeyps = pFam->m_pKeyps;
+	ZeroAB(pKeyps->m_mpKeycodeEdges, sizeof(pKeyps->m_mpKeycodeEdges));
+	while (true)
+	{
+		KEYCODE keycode = KEYCODE(S16Read(pSis));
+		if (keycode == KEYCODE_Nil)
+			break;
+
+		ReadT(pSis, &edges);
+
+		printf(" <-- %d:%d\n", keycode, edges);
+		pKeyps->m_mpKeycodeEdges[keycode] = edges;
+	}
+
+}
+
+void WriteMmc1Save(SaveOutStream * pSos, Famicom * pFam)
+{
+	auto pMapr1 = PMapr1(pFam);
+	WritePB(pSos, pMapr1, sizeof(*pMapr1));
+
+	Cart * pCart = pFam->m_pCart;
+	if (pCart->m_cBPrgRam)
+	{
+		FF_ASSERT(pCart->m_cBPrgRam == FF_KIB(8), "expected 3kib of ram");
+		u8 * pBPrgRam = &pFam->m_memmp.m_aBRaw[0x6000];
+		WritePB(pSos, pBPrgRam, pCart->m_cBPrgRam);
+	}
+
+	if (pCart->m_cBChrRam)
+	{
+		FF_ASSERT(pCart->m_cBPrgRam == FF_KIB(8), "expected 3kib of ram");
+		u8 * pBChrRam = pFam->m_ppu.m_aBChr;
+		WritePB(pSos, pBChrRam, pCart->m_cBChrRam);
+	}
+}
+
+void ReadMmc1Save(SaveInStream * pSis, Famicom * pFam)
+{
+	auto pMapr1 = PMapr1(pFam);
+	if (!FF_FVERIFY(pMapr1, "null mapper in state read"))
+		return;
+
+	ReadPB(pSis, pMapr1, sizeof(*pMapr1));
+
+	Cart * pCart = pFam->m_pCart;
+	if (pCart->m_cBPrgRam)
+	{
+		FF_ASSERT(pCart->m_cBPrgRam == FF_KIB(8), "expected 3kib of ram");
+		u8 * pBPrgRam = &pFam->m_memmp.m_aBRaw[0x6000];
+		ReadPB(pSis, pBPrgRam, pCart->m_cBPrgRam);
+	}
+
+	if (pCart->m_cBChrRam)
+	{
+		FF_ASSERT(pCart->m_cBPrgRam == FF_KIB(8), "expected 3kib of ram");
+		u8 * pBChrRam = pFam->m_ppu.m_aBChr;
+		ReadPB(pSis, pBChrRam, pCart->m_cBChrRam);
+	}
+	UpdateBanks(pFam, pMapr1);
+}
+
+void WriteCart(SaveOutStream * pSos, Famicom * pFam)
+{
+	// TBD: need to generate a checksum for the rom contents rather than using the filename
+	Cart * pCart = pFam->m_pCart;
+	WriteString(pSos, pCart->m_pChzName);
+	WriteU32(pSos, pCart->m_hvRom);
+
+	switch(pCart->m_mapperk)
+	{
+	case MAPPERK_NROM:	/*WriteNromSave(pSos, pFam);*/	break;
+	case MAPPERK_MMC1:	WriteMmc1Save(pSos, pFam);		break;
+	default:
+		FF_ASSERT(false, "unhandled mapper kind reading save state.")
+	}
+}
+
+bool FTryReadCart(SaveInStream * pSis, Famicom * pFam)
+{
+	Cart * pCart = pFam->m_pCart;
+	auto pChzRom = PChzReadString(pSis);
+	bool fSameName = !strcmp(pChzRom, pCart->m_pChzName);
+
+	u32 hvRom = U32Read(pSis);
+		
+	delete [] pChzRom;
+	if (!fSameName || hvRom != pCart->m_hvRom)
+	{
+		return false;
+	}
+
+	switch(pCart->m_mapperk)
+	{
+	case MAPPERK_NROM:	/*ReadNromSave(pSis, pFam);*/	break;
+	case MAPPERK_MMC1:	ReadMmc1Save(pSis, pFam);		break;
+	default:
+		FF_ASSERT(false, "unhandled mapper kind reading save state.")
+	}
+	return true;
+}
+
+void WriteSave(SaveOutStream * pSos, Famicom * pFam)
+{
+	printf("writeSave:\n");
+	WriteCart(pSos, pFam);
+	CheckFormat(pSos);
+	WritePB(pSos, &pFam->m_cpu, sizeof(Cpu));	
+	WritePB(pSos, &pFam->m_cpuPrev, sizeof(Cpu));	
+	WritePB(pSos, &pFam->m_memmp.m_aBRaw, FF_KIB(2));
+	WriteT(pSos, &pFam->m_memmp.m_bPrevBus);
+	WriteT(pSos, &pFam->m_memmp.m_bPrevBusPpu);
+
+	WritePB(pSos, &pFam->m_ptimCpu, sizeof(PpuTiming));	
+	WritePB(pSos, &pFam->m_tickp, sizeof(TickPpu));	
+	WritePB(pSos, &pFam->m_tickcExecuteEnd, sizeof(pFam->m_tickcExecuteEnd));	
+	WritePB(pSos, &pFam->m_fIsRomLoaded, sizeof(pFam->m_fIsRomLoaded));	
+	WritePB(pSos, &pFam->m_stepk, sizeof(pFam->m_stepk));	
+	WritePpu(pSos, &pFam->m_ppu);
+	WritePpuCommandList(pSos, &pFam->m_ppucl);
+	CheckFormat(pSos);
+
+	WriteApu(pSos, &pFam->m_apu);
+	WriteInput(pSos, pFam);
+}
+
+bool FTryReadSave(SaveInStream * pSis, Famicom * pFam)
+{
+	printf("readSave:\n");
+	if (!FTryReadCart(pSis, pFam))
+		return false;
+	CheckFormat(pSis);
+	ReadPB(pSis, &pFam->m_cpu, sizeof(Cpu));	
+	ReadPB(pSis, &pFam->m_cpuPrev, sizeof(Cpu));	
+	ReadPB(pSis, &pFam->m_memmp.m_aBRaw, FF_KIB(2));
+	ReadT(pSis, &pFam->m_memmp.m_bPrevBus);
+	ReadT(pSis, &pFam->m_memmp.m_bPrevBusPpu);
+
+	ReadPB(pSis, &pFam->m_ptimCpu, sizeof(PpuTiming));	
+	ReadPB(pSis, &pFam->m_tickp, sizeof(TickPpu));	
+	ReadPB(pSis, &pFam->m_tickcExecuteEnd, sizeof(pFam->m_tickcExecuteEnd));	
+	ReadPB(pSis, &pFam->m_fIsRomLoaded, sizeof(pFam->m_fIsRomLoaded));	
+	ReadPB(pSis, &pFam->m_stepk, sizeof(pFam->m_stepk));	
+
+	ReadPpu(pSis, &pFam->m_ppu);
+	ReadPpuCommandList(pSis, &pFam->m_ppucl);
+	CheckFormat(pSis);
+
+	ReadApu(pSis, &pFam->m_apu);
+	ReadInput(pSis, pFam);
+
+	return true;
+}

@@ -244,6 +244,8 @@ enum STEPK
 	STEPK_Run,
 };
 
+
+
 struct Famicom // tag = fam
 {
 					Famicom()
@@ -276,6 +278,51 @@ struct Famicom // tag = fam
 	void *			m_pVMapr;		// mapper registers - typed by mapperk
 	MemoryMap 		m_memmp;
 };
+
+
+struct SaveOutStream // tag = sos
+{
+
+	bool		FIsEmpty() const
+					{ return m_bstr.FIsEmpty(); }
+	void		Clear()
+					{ m_bstr.Clear(); }
+
+	ByteStream	m_bstr;
+};
+
+struct SaveInStream // tag = sis
+{
+	explicit	SaveInStream(const SaveOutStream * pSos);
+
+	ByteStream	m_bstr;
+	size_t		m_iB;
+};
+
+
+
+#define CHECK_SAVE_FORMAT 1
+#if CHECK_SAVE_FORMAT
+void CheckFormat(SaveOutStream * pSos);
+void CheckFormat(SaveInStream * pSis);
+#else
+void CheckFormat(SaveOutStream * pSos)		{ ; }
+bool CheckFormat(SaveInStream * pSis)		{ return true; }
+#endif
+
+void WriteU32(SaveOutStream * pSos, u32 n);
+void WriteS16(SaveOutStream * pSos, s16 n);
+void WriteS64(SaveOutStream * pSos, s64 n);
+void WritePB(SaveOutStream * pSos, const void * pB, size_t cB);
+u32 U32Read(SaveInStream * pSis);
+s16 S16Read(SaveInStream * pSis);
+s64 S64Read(SaveInStream * pSis);
+void ReadPB(SaveInStream * pSis, void * pB, size_t cB);
+
+void WriteSave(SaveOutStream * pSos, Famicom * pFam);
+bool FTryReadSave(SaveInStream * pSis, Famicom * pFam);
+
+
 
 // advance one cpu clock cycle
 inline void TickCpu(Famicom * pFam)
