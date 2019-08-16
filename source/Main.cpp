@@ -14,6 +14,35 @@ s64 g_cTickPerSecond = 1;
 
 void UpdateSaveState(Platform * pPlat, Famicom * pFam, SaveOutStream * pSos)
 {
+	static const char * s_pChzSave = "default";
+	static const char * s_pChzExtension = ".Famsave";
+	char * pChzSave = nullptr;
+
+	if (pPlat->m_fRequestedSaveState || pPlat->m_fRequestedLoadState)
+	{
+		const char * pChzCart = pFam->m_pCart->m_pChzName;
+		if (pChzCart && pChzCart[0] != '\0') 
+		{
+			size_t iBFilename = 0;
+			size_t iBExtension = 0;
+			size_t iBEnd = 0;
+			SplitFilename(pChzCart, &iBFilename, &iBExtension, &iBEnd);
+
+			size_t cChFilename = iBExtension - iBFilename;
+			size_t cBSaveName = cChFilename + strlen(s_pChzExtension) + 1;
+
+			pChzSave = new char  [cBSaveName];
+			memcpy(pChzSave, &pChzCart[iBFilename], cChFilename);
+			strcpy_s(&pChzSave[cChFilename], cBSaveName - cChFilename, s_pChzExtension);
+		}
+		else
+		{
+			size_t cBSaveName = strlen(s_pChzSave) + strlen(s_pChzExtension) + 1;
+			pChzSave = new char [cBSaveName];
+			sprintf_s(pChzSave, cBSaveName, "%s%s", s_pChzSave, s_pChzExtension);
+		}
+	}
+	
 	if (pPlat->m_fRequestedSaveState)
 	{
 		pPlat->m_fRequestedSaveState = false;
@@ -24,17 +53,32 @@ void UpdateSaveState(Platform * pPlat, Famicom * pFam, SaveOutStream * pSos)
 		}
 
 		WriteSave(pSos, pFam);
+
+		FTryWriteSaveToFile(pChzSave, pSos);
 	}
 
 	if (pPlat->m_fRequestedLoadState)
 	{
 		pPlat->m_fRequestedLoadState = false;
 
-		SaveInStream sis(pSos);
-		if (!FTryReadSave(&sis, pFam))
+		//SaveInStream sis(pSos);
+		SaveInStream sis;
+		bool fReadSuccess = false;
+		if (FTryReadSaveFromFile(pChzSave, &sis))
 		{
-			printf("failed restoring save state\n");
+			fReadSuccess = FTryReadSave(&sis, pFam);
 		}
+
+		if (!fReadSuccess)
+		{
+			printf("failed restoring save state: '%s'\n", pChzSave);
+		}
+	}
+
+	if (pChzSave)
+	{
+		free(pChzSave);
+		pChzSave = nullptr;
 	}
 }
 

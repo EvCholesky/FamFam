@@ -323,3 +323,5 @@ void ShowInfo(const char * pChzFormat, ...);
 
 u32 HvFromPBFVN(const void * pV, size_t cB);
 u32 HvConcatPBFVN(u32 hv, const void * pV, size_t cB);
+
+void SplitFilename(const char * pChzFilename, size_t * piBFile, size_t * piBExtension, size_t * piBEnd);

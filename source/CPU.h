@@ -285,6 +285,8 @@ struct SaveOutStream // tag = sos
 
 	bool		FIsEmpty() const
 					{ return m_bstr.FIsEmpty(); }
+	size_t		CB()  const
+					{ return m_bstr.CB(); }
 	void		Clear()
 					{ m_bstr.Clear(); }
 
@@ -293,6 +295,7 @@ struct SaveOutStream // tag = sos
 
 struct SaveInStream // tag = sis
 {
+				SaveInStream();
 	explicit	SaveInStream(const SaveOutStream * pSos);
 
 	ByteStream	m_bstr;
@@ -322,7 +325,8 @@ void ReadPB(SaveInStream * pSis, void * pB, size_t cB);
 void WriteSave(SaveOutStream * pSos, Famicom * pFam);
 bool FTryReadSave(SaveInStream * pSis, Famicom * pFam);
 
-
+bool FTryWriteSaveToFile(const char * pChzSavename, SaveOutStream * pSos);
+bool FTryReadSaveFromFile(const char * pChzSavename, SaveInStream * pSis);
 
 // advance one cpu clock cycle
 inline void TickCpu(Famicom * pFam)

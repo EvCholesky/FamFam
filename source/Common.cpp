@@ -116,3 +116,35 @@ u32 HvConcatPBFVN(u32 hv, const void * pV, size_t cB)
     return hv;
 }
 
+inline size_t CBCodepoint(const char * pCoz)
+{
+	if ((*pCoz & 0xF8) == 0xF0)	return 4;
+	if ((*pCoz & 0xF0) == 0xE0)	return 3;
+	if ((*pCoz & 0xE0) == 0xC0)	return 2;
+	return 1;
+}
+
+void SplitFilename(const char * pChzFilename, size_t * piBFile, size_t * piBExtension, size_t * piBEnd)
+{
+	ptrdiff_t iBFile = 0;
+	ptrdiff_t iBExtension = -1;
+	const char * pChIt = pChzFilename;
+	for ( ; *pChIt != '\0'; pChIt += CBCodepoint(pChIt))
+	{
+		if (*pChIt == '\\')
+		{
+			iBFile = (pChIt+1) - pChzFilename;
+			iBExtension = -1;	// only acknowledge the first '.' after the last directory
+		}
+		else if (iBExtension < 0 && *pChIt == '.')
+		{
+			iBExtension = pChIt - pChzFilename;
+		}
+	}
+
+	*piBFile = iBFile;
+	*piBEnd = pChIt - pChzFilename;
+	*piBExtension = (iBExtension < 0) ? *piBEnd : iBExtension;
+}
+
+

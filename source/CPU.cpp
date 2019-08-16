@@ -13,7 +13,7 @@ Famicom g_fam;
 static const char s_chWildcard = '?';
 bool s_fTraceCpu = false;
 
-
+static const s16 s_nSaveFileVersion = 1;
 
 inline MapperMMC1 * PMapr1(Famicom * pFam)
 {
@@ -2110,6 +2110,11 @@ void ExecuteFamicomFrame(Famicom * pFam)
 	EndTimer(TVAL_UpdateApu);
 }
  
+SaveInStream::SaveInStream()
+:m_iB(0)
+{
+}
+
 SaveInStream::SaveInStream(const SaveOutStream * pSos)
 :m_iB(0)
 {
@@ -2276,18 +2281,8 @@ void WriteInput(SaveOutStream * pSos, Famicom * pFam)
 		WritePB(pSos, pGpad->m_mpButkEdges, sizeof(pGpad->m_mpButkEdges));
 	}
 
-	KeyPressState * pKeyps = pFam->m_pKeyps;
-	for (s16 keycode = 0; keycode < KEYCODE_Max; ++keycode)	
-	{
-		EDGES edges = pKeyps->m_mpKeycodeEdges[keycode];
-		if (edges == EDGES_Off)
-			continue;
-
-		printf(" -> %d:%d\n", keycode, edges);
-		WriteS16(pSos, keycode);
-		WriteT(pSos, &edges);
-	}
-	WriteS16(pSos, KEYCODE_Nil);
+	// Don't save m_mpKeycodeEdges, It's the current state of the keys/buttons as reported by glfw 
+	// - if we set it on load we won't get a glfw callback to clear it.
 }
 
 void ReadInput(SaveInStream * pSis, Famicom * pFam)
@@ -2304,22 +2299,6 @@ void ReadInput(SaveInStream * pSis, Famicom * pFam)
 			continue;
 		ReadPB(pSis, pGpad->m_mpButkEdges, sizeof(pGpad->m_mpButkEdges));
 	}
-
-	EDGES edges;
-	KeyPressState * pKeyps = pFam->m_pKeyps;
-	ZeroAB(pKeyps->m_mpKeycodeEdges, sizeof(pKeyps->m_mpKeycodeEdges));
-	while (true)
-	{
-		KEYCODE keycode = KEYCODE(S16Read(pSis));
-		if (keycode == KEYCODE_Nil)
-			break;
-
-		ReadT(pSis, &edges);
-
-		printf(" <-- %d:%d\n", keycode, edges);
-		pKeyps->m_mpKeycodeEdges[keycode] = edges;
-	}
-
 }
 
 void WriteMmc1Save(SaveOutStream * pSos, Famicom * pFam)
@@ -2330,7 +2309,7 @@ void WriteMmc1Save(SaveOutStream * pSos, Famicom * pFam)
 	Cart * pCart = pFam->m_pCart;
 	if (pCart->m_cBPrgRam)
 	{
-		FF_ASSERT(pCart->m_cBPrgRam == FF_KIB(8), "expected 3kib of ram");
+		FF_ASSERT(pCart->m_cBPrgRam == FF_KIB(8), "expected 8KiB of ram");
 		u8 * pBPrgRam = &pFam->m_memmp.m_aBRaw[0x6000];
 		WritePB(pSos, pBPrgRam, pCart->m_cBPrgRam);
 	}
@@ -2410,7 +2389,6 @@ bool FTryReadCart(SaveInStream * pSis, Famicom * pFam)
 
 void WriteSave(SaveOutStream * pSos, Famicom * pFam)
 {
-	printf("writeSave:\n");
 	WriteCart(pSos, pFam);
 	CheckFormat(pSos);
 	WritePB(pSos, &pFam->m_cpu, sizeof(Cpu));	
@@ -2434,7 +2412,6 @@ void WriteSave(SaveOutStream * pSos, Famicom * pFam)
 
 bool FTryReadSave(SaveInStream * pSis, Famicom * pFam)
 {
-	printf("readSave:\n");
 	if (!FTryReadCart(pSis, pFam))
 		return false;
 	CheckFormat(pSis);
@@ -2459,3 +2436,61 @@ bool FTryReadSave(SaveInStream * pSis, Famicom * pFam)
 
 	return true;
 }
+
+bool FTryWriteSaveToFile(const char * pChzSavename, SaveOutStream * pSos)
+{
+	FILE * pFile = nullptr;
+	FF_FOPEN(pFile, pChzSavename, "wb");
+	if (!pFile)
+		return false;
+
+    size_t cBWritten = fwrite(&s_nSaveFileVersion, 1, sizeof(s_nSaveFileVersion), pFile);
+	bool fSuccess = (cBWritten == sizeof(s_nSaveFileVersion));
+
+	size_t cBSave = 0;
+	if (fSuccess) 
+	{
+		cBSave = pSos->CB();
+		cBWritten = fwrite(&cBSave, 1, sizeof(cBSave), pFile);
+		fSuccess = (cBWritten == sizeof(cBSave));
+	}
+
+	if (fSuccess) 
+	{
+		cBWritten = fwrite(pSos->m_bstr.m_pB, 1, cBSave, pFile);
+		fSuccess = (cBWritten == cBSave);
+	}
+
+    fclose(pFile);
+	return fSuccess;
+}
+
+bool FTryReadSaveFromFile(const char * pChzSavename, SaveInStream * pSis)
+{
+	FILE * pFile = nullptr;
+	FF_FOPEN(pFile, pChzSavename, "rb");
+	if (!pFile)
+		return false;
+
+	s16 nFileVersion = -1;
+    size_t cBRead = fread(&nFileVersion, 1, sizeof(nFileVersion), pFile);
+
+	size_t cBSaveFile = 0;
+	bool fSuccess = false;
+	bool fIsCorrectVersion = (cBRead == sizeof(nFileVersion)) && nFileVersion == s_nSaveFileVersion; 
+	if (fIsCorrectVersion)
+	{
+		cBRead = fread(&cBSaveFile, 1, sizeof(cBSaveFile), pFile);
+	}
+
+	if (cBSaveFile)
+	{
+		u8 * pB = pSis->m_bstr.PBAppend(cBSaveFile);
+		cBRead = fread(pB, 1, cBSaveFile, pFile);
+		fSuccess = (cBRead == cBSaveFile);
+	}
+
+    fclose(pFile);
+	return fSuccess;
+}
+
